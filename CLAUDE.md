@@ -79,10 +79,10 @@ Status values: `success`, `warning`, `error`, `muted` (maps to semantic colors)
 - [x] Build succeeds (`pnpm build`)
 
 ### Day 2: Streaming Renderer
-- [ ] **2.1** Stream parser — `findStreamElements()` + `appendStreamElement()`
-- [ ] **2.2** Sanitizer — DOMPurify config auto-generated from component registry
-- [ ] **2.3** Component mapper — `inferComponent(data)` auto-selects component from JSON shape
-- [ ] **2.4** Chat client — SSE EventSource with cancel/abort support
+- [x] **2.1** Stream parser — `findStreamElements()` + `appendStreamElement()`
+- [x] **2.2** Sanitizer — DOMPurify config auto-generated from component registry
+- [x] **2.3** Component mapper — `inferComponent(data)` auto-selects component from JSON shape
+- [x] **2.4** Chat client — SSE EventSource with cancel/abort support
 
 ### Day 3: Demo App Backend
 - [ ] **3.1** MCP client hub — `@modelcontextprotocol/sdk`, reads `mcp-servers.json`
