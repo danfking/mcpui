@@ -1,0 +1,14 @@
+{
+  "name": "mcpui",
+  "private": true,
+  "description": "Universal UI layer for MCP servers",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter demo dev",
+    "clean": "pnpm -r clean"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.4"
+}
