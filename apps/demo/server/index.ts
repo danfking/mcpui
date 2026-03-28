@@ -60,6 +60,24 @@ app.get('/api/servers', (c) => {
 
 // --- Static Files ---
 
+// Serve built component JS files at /components/*
+app.use('/components/*', serveStatic({
+    root: resolve(__dirname, '../../packages/components/dist'),
+    rewriteRequestPath: (path) => path.replace('/components', ''),
+}));
+
+// Serve tokens.css from components package
+app.get('/tokens.css', async (c) => {
+    const { readFile } = await import('node:fs/promises');
+    const css = await readFile(
+        resolve(__dirname, '../../packages/components/src/tokens.css'),
+        'utf-8',
+    );
+    c.header('Content-Type', 'text/css');
+    return c.body(css);
+});
+
+// Serve public directory
 app.use('/*', serveStatic({ root: resolve(__dirname, '../public') }));
 
 // --- Startup ---

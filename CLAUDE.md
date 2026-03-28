@@ -91,9 +91,9 @@ Status values: `success`, `warning`, `error`, `muted` (maps to semantic colors)
 - [x] **3.4** System prompt template — generic component docs, exportable for extension
 
 ### Day 4: Demo App Frontend + Drill-Down
-- [ ] **4.1** SPA shell — two-pane layout (content + chat sidebar), prompt bar
-- [ ] **4.2** App orchestration — streaming → progressive rendering, skeleton states
-- [ ] **4.3** Drill-down — card click → contextual follow-up prompt → recursive render
+- [x] **4.1** SPA shell — two-pane layout (content + chat sidebar), prompt bar
+- [x] **4.2** App orchestration — streaming → progressive rendering, skeleton states
+- [x] **4.3** Drill-down — card click → contextual follow-up prompt → recursive render + breadcrumb trail
 - [ ] **4.4** MCP server config panel (stretch)
 
 ### Day 5: Integration Testing + Polish
