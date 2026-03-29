@@ -570,6 +570,27 @@ document.addEventListener('DOMContentLoaded', () => {
         handleSubmit(toolName);
     });
 
+    // ── Form field lookups ──
+    container.addEventListener('mcpui-form-lookup', async (e) => {
+        const { fieldKey, prompt } = e.detail || {};
+        const formEl = e.target;
+        if (!formEl || !fieldKey) return;
+
+        try {
+            const res = await fetch('/api/lookup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: `${prompt}. Return ONLY a JSON array of objects with "value" and "label" string fields. No markdown, no code fences, no explanation — just the raw JSON array. Example format: [{"value":"octocat","label":"octocat (The Octocat)"}]. Limit to 10 results.`,
+                }),
+            });
+            const data = await res.json();
+            formEl.setLookupResults(fieldKey, data.results || []);
+        } catch (err) {
+            formEl.setLookupResults(fieldKey, []);
+        }
+    });
+
     // ── Browser history ──
     window.addEventListener('popstate', (e) => {
         if (e.state?.nodeId) scrollToNode(e.state.nodeId);

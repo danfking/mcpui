@@ -47,8 +47,21 @@ Attributes: type ("line"|"bar"|"doughnut"|"pie"), config (JSON: full Chart.js co
 ### <mcpui-form> (for write/mutate operations)
 Renders a form for user input before calling a write tool. Use this for create/update/delete operations — NEVER auto-invoke write tools.
 Attributes: title (form heading), tool-id (full tool name), fields (JSON array of field definitions)
-Field format: [{key, label, type ("text"|"textarea"|"number"|"select"), required (boolean), placeholder, options (for select: [{value, label}])}]
-Emits mcpui-form-submit event with {toolId, values}.
+Field format: [{key, label, type ("text"|"textarea"|"number"|"select"), required (boolean), placeholder, options (for select), lookup (optional)}]
+
+**Lookup-enabled fields**: For fields that can be populated by calling other tools, add a "lookup" property to the field definition:
+  {"key":"owner", "label":"Owner", "type":"text", "required":true, "lookup":{"prompt":"Search for GitHub users"}}
+The form renders a search button next to lookup fields. Clicking it calls the appropriate tool to populate options.
+
+Common lookup patterns (use these when generating forms):
+- User/owner fields → lookup: { "prompt": "Search for GitHub users" }
+- Repository fields → lookup: { "prompt": "Search for GitHub repositories owned by the user" }
+- Branch fields → lookup: { "prompt": "List branches in the repository" }
+- File/path fields → lookup: { "prompt": "List files and directories" }
+- Label fields → lookup: { "prompt": "List available labels for the repository" }
+- Assignee fields → lookup: { "prompt": "Search for GitHub users who can be assigned" }
+
+Always add lookup to fields where another tool can provide valid values. This works for ANY MCP server, not just GitHub.
 
 ### <mcpui-metric>
 Single KPI / metric display with optional trend indicator.

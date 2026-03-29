@@ -1,4 +1,4 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 
 interface FormField {
     key: string;
@@ -7,6 +7,12 @@ interface FormField {
     required?: boolean;
     placeholder?: string;
     options?: Array<{ value: string; label: string }>;
+    lookup?: { prompt: string; placeholder?: string };
+}
+
+interface LookupResult {
+    value: string;
+    label: string;
 }
 
 export class McpuiForm extends LitElement {
@@ -16,6 +22,9 @@ export class McpuiForm extends LitElement {
         fields: { type: String },
         _status: { state: true },
         _statusMsg: { state: true },
+        _lookupResults: { state: true },
+        _lookupField: { state: true },
+        _lookupLoading: { state: true },
     };
 
     static styles = css`
@@ -31,83 +40,90 @@ export class McpuiForm extends LitElement {
             font-size: var(--mcpui-font-size-md, 14px);
             font-weight: 600;
             border-bottom: 1px solid var(--mcpui-border-light, #f3f4f6);
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            display: flex; align-items: center; gap: 8px;
         }
-        .form-icon {
-            width: 18px; height: 18px; color: var(--mcpui-accent, #4f6df5);
-        }
-        .form-body {
-            padding: var(--mcpui-space-lg, 16px);
-        }
-        .form-field {
-            margin-bottom: var(--mcpui-space-md, 12px);
-        }
+        .form-icon { width: 18px; height: 18px; color: var(--mcpui-accent, #4f6df5); }
+        .form-body { padding: var(--mcpui-space-lg, 16px); }
+        .form-field { margin-bottom: var(--mcpui-space-md, 12px); }
         .form-field:last-of-type { margin-bottom: var(--mcpui-space-lg, 16px); }
         .form-label {
-            display: block;
-            font-size: var(--mcpui-font-size-sm, 12px);
-            font-weight: 500;
-            color: var(--mcpui-text-secondary, #6b7280);
+            display: block; font-size: var(--mcpui-font-size-sm, 12px);
+            font-weight: 500; color: var(--mcpui-text-secondary, #6b7280);
             margin-bottom: var(--mcpui-space-xs, 4px);
         }
-        .form-required {
-            color: var(--mcpui-error, #ef4444);
-            margin-left: 2px;
-        }
+        .form-required { color: var(--mcpui-error, #ef4444); margin-left: 2px; }
         .form-input, .form-textarea, .form-select {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid var(--mcpui-border, #e5e7eb);
-            border-radius: 6px;
-            font-size: var(--mcpui-font-size-base, 13px);
-            font-family: inherit;
-            color: var(--mcpui-text, #1f2937);
-            background: var(--mcpui-surface, #fff);
-            box-sizing: border-box;
-            transition: border-color 0.15s ease;
+            width: 100%; padding: 8px 12px;
+            border: 1px solid var(--mcpui-border, #e5e7eb); border-radius: 6px;
+            font-size: var(--mcpui-font-size-base, 13px); font-family: inherit;
+            color: var(--mcpui-text, #1f2937); background: var(--mcpui-surface, #fff);
+            box-sizing: border-box; transition: border-color 0.15s ease;
         }
         .form-input:focus, .form-textarea:focus, .form-select:focus {
-            outline: none;
-            border-color: var(--mcpui-accent, #4f6df5);
+            outline: none; border-color: var(--mcpui-accent, #4f6df5);
             box-shadow: 0 0 0 3px rgba(79, 109, 245, 0.1);
         }
-        .form-textarea {
-            min-height: 80px;
-            resize: vertical;
+        .form-textarea { min-height: 80px; resize: vertical; }
+
+        /* Lookup styles */
+        .form-input-row { display: flex; gap: 4px; }
+        .form-input-row .form-input { flex: 1; }
+        .form-lookup-btn {
+            padding: 0 10px; border: 1px solid var(--mcpui-border, #e5e7eb); border-radius: 6px;
+            background: var(--mcpui-surface-alt, #f9fafb); cursor: pointer;
+            color: var(--mcpui-text-muted, #6b7280); font-size: 14px;
+            display: flex; align-items: center; transition: all 0.15s ease;
+            flex-shrink: 0;
         }
+        .form-lookup-btn:hover {
+            background: var(--mcpui-border-light, #f3f4f6);
+            border-color: var(--mcpui-accent, #4f6df5); color: var(--mcpui-accent, #4f6df5);
+        }
+        .form-lookup-btn.loading { opacity: 0.5; pointer-events: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .form-lookup-btn.loading svg { animation: spin 1s linear infinite; }
+        .form-lookup-results {
+            border: 1px solid var(--mcpui-border, #e5e7eb); border-radius: 6px;
+            margin-top: 4px; max-height: 200px; overflow-y: auto;
+            background: var(--mcpui-surface, #fff); box-shadow: var(--mcpui-shadow-md);
+        }
+        .form-lookup-item {
+            padding: 8px 12px; cursor: pointer; font-size: 13px;
+            border-bottom: 1px solid var(--mcpui-border-light, #f3f4f6);
+            transition: background 0.1s ease;
+        }
+        .form-lookup-item:hover { background: rgba(79, 109, 245, 0.06); }
+        .form-lookup-item:last-child { border-bottom: none; }
+        .form-lookup-item-value { font-weight: 500; color: var(--mcpui-text, #1f2937); }
+        .form-lookup-item-label { font-size: 11px; color: var(--mcpui-text-muted, #9ca3af); margin-left: 6px; }
+        .form-lookup-empty {
+            padding: 12px; text-align: center; font-size: 12px;
+            color: var(--mcpui-text-muted, #9ca3af);
+        }
+        .form-lookup-loading {
+            padding: 12px; text-align: center; font-size: 12px;
+            color: var(--mcpui-accent, #4f6df5);
+        }
+
+        /* Actions */
         .form-actions {
-            display: flex;
-            gap: 8px;
-            justify-content: flex-end;
+            display: flex; gap: 8px; justify-content: flex-end;
             padding-top: var(--mcpui-space-sm, 8px);
             border-top: 1px solid var(--mcpui-border-light, #f3f4f6);
         }
         .form-btn {
-            padding: 8px 20px;
-            border-radius: 6px;
-            font-size: var(--mcpui-font-size-base, 13px);
-            font-weight: 500;
-            cursor: pointer;
-            border: none;
-            transition: all 0.15s ease;
+            padding: 8px 20px; border-radius: 6px;
+            font-size: var(--mcpui-font-size-base, 13px); font-weight: 500;
+            cursor: pointer; border: none; transition: all 0.15s ease;
         }
-        .form-btn-submit {
-            background: var(--mcpui-accent, #4f6df5);
-            color: white;
-        }
+        .form-btn-submit { background: var(--mcpui-accent, #4f6df5); color: white; }
         .form-btn-submit:hover { filter: brightness(1.1); }
         .form-btn-reset {
             background: var(--mcpui-surface-alt, #f5f6f8);
             color: var(--mcpui-text-secondary, #6b7280);
         }
         .form-btn-reset:hover { background: var(--mcpui-border, #e5e7eb); }
-        .form-status {
-            font-size: var(--mcpui-font-size-sm, 12px);
-            padding: 6px 0;
-            text-align: center;
-        }
+        .form-status { font-size: var(--mcpui-font-size-sm, 12px); padding: 6px 0; text-align: center; }
         .form-status.error { color: var(--mcpui-error, #ef4444); }
         .form-status.success { color: var(--mcpui-success, #22c55e); }
     `;
@@ -117,16 +133,59 @@ export class McpuiForm extends LitElement {
     declare fields: string;
     declare _status: string;
     declare _statusMsg: string;
+    declare _lookupResults: LookupResult[];
+    declare _lookupField: string;
+    declare _lookupLoading: boolean;
 
     constructor() {
         super();
         this._status = '';
         this._statusMsg = '';
+        this._lookupResults = [];
+        this._lookupField = '';
+        this._lookupLoading = false;
     }
 
     private _getFields(): FormField[] {
         try { return JSON.parse(this.fields || '[]'); }
         catch { return []; }
+    }
+
+    /** Called externally to populate lookup results for a field */
+    setLookupResults(fieldKey: string, results: LookupResult[]) {
+        this._lookupField = fieldKey;
+        this._lookupResults = results || [];
+        this._lookupLoading = false;
+    }
+
+    private _handleLookup(field: FormField) {
+        if (!field.lookup) return;
+        this._lookupField = field.key;
+        this._lookupResults = [];
+        this._lookupLoading = true;
+
+        this.dispatchEvent(new CustomEvent('mcpui-form-lookup', {
+            detail: {
+                fieldKey: field.key,
+                prompt: field.lookup.prompt,
+                toolId: this['tool-id'],
+            },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+
+    private _selectLookupResult(fieldKey: string, value: string) {
+        const input = this.shadowRoot?.querySelector(`[data-key="${fieldKey}"]`) as HTMLInputElement | null;
+        if (input) input.value = value;
+        this._lookupField = '';
+        this._lookupResults = [];
+    }
+
+    private _closeLookup() {
+        this._lookupField = '';
+        this._lookupResults = [];
+        this._lookupLoading = false;
     }
 
     private _handleSubmit(e: Event) {
@@ -137,8 +196,6 @@ export class McpuiForm extends LitElement {
             const input = this.shadowRoot?.querySelector(`[data-key="${field.key}"]`) as HTMLInputElement | HTMLTextAreaElement | null;
             if (input) values[field.key] = input.value;
         }
-
-        // Check required fields
         for (const field of fields) {
             if (field.required && !values[field.key]?.trim()) {
                 this._status = 'error';
@@ -146,14 +203,11 @@ export class McpuiForm extends LitElement {
                 return;
             }
         }
-
         this._status = '';
         this._statusMsg = '';
-
         this.dispatchEvent(new CustomEvent('mcpui-form-submit', {
             detail: { toolId: this['tool-id'], values },
-            bubbles: true,
-            composed: true,
+            bubbles: true, composed: true,
         }));
     }
 
@@ -162,11 +216,73 @@ export class McpuiForm extends LitElement {
         inputs?.forEach((el: Element) => { (el as HTMLInputElement).value = ''; });
         this._status = '';
         this._statusMsg = '';
+        this._closeLookup();
+    }
+
+    private _renderField(f: FormField) {
+        const hasLookup = !!f.lookup;
+        const isLookupActive = this._lookupField === f.key;
+
+        const searchIcon = html`<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="10" y1="10" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>`;
+
+        const loadingIcon = html`<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1.5a6.5 6.5 0 105.196 2.597" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>`;
+
+        if (f.type === 'textarea') {
+            return html`<textarea class="form-textarea" data-key="${f.key}"
+                placeholder="${f.placeholder || ''}" ?required=${f.required}></textarea>`;
+        }
+
+        if (f.type === 'select' && f.options) {
+            return html`<select class="form-select" data-key="${f.key}" ?required=${f.required}>
+                <option value="">Select...</option>
+                ${f.options.map(o => html`<option value="${o.value}">${o.label}</option>`)}
+            </select>`;
+        }
+
+        const input = html`<input class="form-input" type="${f.type === 'number' ? 'number' : 'text'}"
+            data-key="${f.key}" placeholder="${f.placeholder || ''}" ?required=${f.required} />`;
+
+        if (!hasLookup) return input;
+
+        return html`
+            <div class="form-input-row">
+                ${input}
+                <button class="form-lookup-btn ${this._lookupLoading && isLookupActive ? 'loading' : ''}"
+                        @click=${() => this._handleLookup(f)}
+                        title="${f.lookup!.placeholder || 'Search'}" type="button">
+                    ${this._lookupLoading && isLookupActive ? loadingIcon : searchIcon}
+                </button>
+            </div>
+            ${isLookupActive ? this._renderLookupDropdown(f.key) : nothing}
+        `;
+    }
+
+    private _renderLookupDropdown(fieldKey: string) {
+        if (this._lookupLoading) {
+            return html`<div class="form-lookup-results"><div class="form-lookup-loading">Searching...</div></div>`;
+        }
+        if (this._lookupResults.length === 0) {
+            return html`<div class="form-lookup-results"><div class="form-lookup-empty">No results found</div></div>`;
+        }
+        return html`
+            <div class="form-lookup-results">
+                ${this._lookupResults.map(r => html`
+                    <div class="form-lookup-item" @click=${() => this._selectLookupResult(fieldKey, r.value)}>
+                        <span class="form-lookup-item-value">${r.value}</span>
+                        ${r.label !== r.value ? html`<span class="form-lookup-item-label">${r.label}</span>` : nothing}
+                    </div>
+                `)}
+            </div>
+        `;
     }
 
     render() {
         const fields = this._getFields();
-
         return html`
             <div class="form-container">
                 <div class="form-header">
@@ -181,24 +297,12 @@ export class McpuiForm extends LitElement {
                             <label class="form-label">
                                 ${f.label}
                                 ${f.required ? html`<span class="form-required">*</span>` : ''}
+                                ${f.lookup ? html`<span style="font-weight:400; color: var(--mcpui-text-muted)"> — searchable</span>` : nothing}
                             </label>
-                            ${f.type === 'textarea'
-                                ? html`<textarea class="form-textarea" data-key="${f.key}"
-                                            placeholder="${f.placeholder || ''}"
-                                            ?required=${f.required}></textarea>`
-                                : f.type === 'select' && f.options
-                                    ? html`<select class="form-select" data-key="${f.key}" ?required=${f.required}>
-                                            <option value="">Select...</option>
-                                            ${f.options.map(o => html`<option value="${o.value}">${o.label}</option>`)}
-                                        </select>`
-                                    : html`<input class="form-input" type="${f.type === 'number' ? 'number' : 'text'}"
-                                            data-key="${f.key}"
-                                            placeholder="${f.placeholder || ''}"
-                                            ?required=${f.required} />`
-                            }
+                            ${this._renderField(f)}
                         </div>
                     `)}
-                    ${this._statusMsg ? html`<div class="form-status ${this._status}">${this._statusMsg}</div>` : ''}
+                    ${this._statusMsg ? html`<div class="form-status ${this._status}">${this._statusMsg}</div>` : nothing}
                     <div class="form-actions">
                         <button class="form-btn form-btn-reset" @click=${this._handleReset} type="button">Clear</button>
                         <button class="form-btn form-btn-submit" @click=${this._handleSubmit} type="button">Submit</button>
