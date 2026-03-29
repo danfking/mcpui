@@ -31,11 +31,11 @@ export class McpuiSection extends LitElement {
         .count { font-size: var(--mcpui-font-size-md, 14px); font-weight: 600; color: var(--mcpui-text-muted); }
         .content { overflow: hidden; transition: max-height var(--mcpui-transition-normal); }
         .grid {
-            display: grid; grid-template-columns: repeat(auto-fill, 340px);
+            display: flex; flex-wrap: wrap;
             gap: var(--mcpui-space-md, 12px);
         }
         :host([collapsed]) .content { max-height: 0 !important; }
-        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+        @media (max-width: 768px) { .grid { flex-direction: column; } }
     `;
 
     declare label: string;

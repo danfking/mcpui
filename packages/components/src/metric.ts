@@ -9,7 +9,7 @@ export class McpuiMetric extends LitElement {
     };
 
     static styles = css`
-        :host { display: block; }
+        :host { display: block; width: 100%; min-width: 0; }
         .metric {
             background: var(--mcpui-surface, #fff);
             border-radius: var(--mcpui-radius-md, 8px);
