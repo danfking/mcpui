@@ -10,7 +10,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { spawn } from 'node:child_process';
 import { writeFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import * as mcpHub from './mcp-hub.js';
@@ -21,7 +22,7 @@ const MAX_TOOL_ROUNDS = 5;
 
 let backend: 'api' | 'cli' = 'api';
 let client: Anthropic | null = null;
-let model = 'claude-sonnet-4-5-20250514';
+let model = 'sonnet';
 
 export function configure(options: {
     backend?: 'api' | 'cli';
@@ -63,8 +64,8 @@ async function* streamResponseCli(
     const conv = conversations.get(conversationId);
     if (!conv) return;
 
-    // Build enriched system prompt with pre-fetched MCP tool data
-    const systemPrompt = buildEnrichedSystemPrompt();
+    // Use the base system prompt (no need to pre-fetch — CLI handles tool calling via MCP)
+    const systemPrompt = buildSystemPrompt();
 
     // Build user message from conversation history
     const userMessage = buildUserMessage(conv);
@@ -73,20 +74,37 @@ async function* streamResponseCli(
     const tempFile = join(tmpdir(), `mcpui-prompt-${randomUUID()}.txt`);
     await writeFile(tempFile, systemPrompt, 'utf-8');
 
+    // Resolve the MCP server config path
+    const mcpConfigPath = resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        '../mcp-servers.json',
+    );
+
     try {
         // CLI command: claude.cmd on Windows, claude on Unix
         const claudeCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+
+        // Build allowed tools list from connected MCP servers
+        // The CLI needs explicit permission for MCP tools
+        const mcpTools = mcpHub.getAllTools();
+        const allowedToolNames = mcpTools.map(t => `mcp__${t.serverName}__${t.name}`);
 
         const args = [
             '--print',
             '--verbose',
             '--output-format', 'stream-json',
-            '--include-partial-messages',
-            '--tools', '',
             '--model', model,
             '--system-prompt-file', tempFile,
+            '--mcp-config', mcpConfigPath,
+            '--strict-mcp-config',
+            '--tools', '',
             '--setting-sources', 'user',
+            ...(allowedToolNames.length > 0
+                ? ['--allowedTools', ...allowedToolNames]
+                : []),
         ];
+
+        console.log(`[llm-cli] Launching with MCP config: ${mcpConfigPath}`);
 
         // Spawn the CLI process
         const env = { ...process.env };
@@ -97,7 +115,7 @@ async function* streamResponseCli(
         const proc = spawn(claudeCmd, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             env,
-            cwd: tmpdir(),
+            cwd: resolve(dirname(fileURLToPath(import.meta.url)), '..'),
             shell: process.platform === 'win32',
         });
 
@@ -119,19 +137,35 @@ async function* streamResponseCli(
             let doc: any;
             try { doc = JSON.parse(line); } catch { continue; }
 
-            // CLI emits "stream_event" wrappers around standard Anthropic API events
-            if (doc.type !== 'stream_event') continue;
-            const event = doc.event;
-            if (!event) continue;
+            // Handle stream_event wrappers (streaming mode)
+            if (doc.type === 'stream_event') {
+                const event = doc.event;
+                if (
+                    event?.type === 'content_block_delta' &&
+                    event.delta?.type === 'text_delta' &&
+                    event.delta?.text
+                ) {
+                    fullResponse += event.delta.text;
+                    yield event.delta.text;
+                }
+                continue;
+            }
 
-            if (
-                event.type === 'content_block_delta' &&
-                event.delta?.type === 'text_delta' &&
-                event.delta?.text
-            ) {
-                const chunk = event.delta.text;
-                fullResponse += chunk;
-                yield chunk;
+            // Handle assistant messages (non-streaming / final result)
+            if (doc.type === 'assistant' && doc.message?.content) {
+                for (const block of doc.message.content) {
+                    if (block.type === 'text' && block.text) {
+                        fullResponse += block.text;
+                        yield block.text;
+                    }
+                }
+                continue;
+            }
+
+            // Handle result message (final)
+            if (doc.type === 'result' && doc.result && !fullResponse) {
+                fullResponse = doc.result;
+                yield doc.result;
             }
         }
 
@@ -154,33 +188,8 @@ async function* streamResponseCli(
     }
 }
 
-/**
- * Build system prompt enriched with pre-fetched MCP tool data.
- * Since CLI mode doesn't support tool calling, we embed all available
- * data directly in the system prompt context.
- */
-function buildEnrichedSystemPrompt(): string {
-    const base = buildSystemPrompt();
-
-    // Pre-fetch data from all connected MCP servers
-    const tools = mcpHub.getAllTools();
-    if (tools.length === 0) return base;
-
-    const toolListText = tools
-        .map(t => `- **${t.name}** (${t.serverName}): ${t.description}`)
-        .join('\n');
-
-    return `${base}
-
-## Connected Tools (reference only — data will be provided by the user or in context)
-${toolListText}
-
-## Important
-Since you cannot call tools directly in this mode, work with whatever data
-the user provides or ask them to specify what they want to explore.
-When the user asks about data, generate the best mcpui-* component layout
-you can based on the information available.`;
-}
+// buildEnrichedSystemPrompt removed — CLI now handles tool calling
+// directly via --mcp-config, so the base system prompt is sufficient.
 
 /**
  * Build the user message from conversation history.
