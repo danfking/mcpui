@@ -772,8 +772,13 @@ function extractHtmlContent(text) {
 
 // ── Drill-Down ──
 function getDrillDownPrompt(title, status, itemId) {
-    const idClause = itemId ? ` (id: ${itemId})` : '';
-    return `Show me detailed information about "${title}"${idClause}. Include a summary card, any available data table, and relevant charts or metrics. Use ONLY mcpui-* web components — no markdown.`;
+    const idClause = itemId ? ` (tool: ${itemId})` : '';
+    // If this looks like a tool/function name, invoke it rather than describe it
+    const looksLikeTool = itemId && (itemId.includes('__') || itemId.includes('mcp_'));
+    if (looksLikeTool) {
+        return `Call the "${title}" tool${idClause} with sensible default parameters and show the results using mcpui-* components (tables, cards, stat-bars, charts). If the tool requires a query or search term, use a reasonable example. Actually execute the tool — do NOT just describe its parameters. Use ONLY mcpui-* web components.`;
+    }
+    return `Explore "${title}"${idClause} in more detail. If this is a file, read it. If this is a resource, fetch its data. If this is an item in a list, get its details. Call the appropriate tools to get real data and show the results using mcpui-* web components — no markdown.`;
 }
 
 // ── Helpers ──
