@@ -659,6 +659,42 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ── Card drill-down ──
+    // ── Stat-bar filter — click chip to show/hide sections ──
+    container.addEventListener('mcpui-filter', (e) => {
+        const { filter } = e.detail || {};
+        // Find the node content area containing this stat-bar
+        const nodeContent = e.target.closest('.mcpui-node-content');
+        if (!nodeContent) return;
+
+        // Show/hide sibling sections and cards based on filter
+        const sections = nodeContent.querySelectorAll('mcpui-section');
+        const cards = nodeContent.querySelectorAll('mcpui-card');
+        const tables = nodeContent.querySelectorAll('mcpui-table');
+
+        if (!filter) {
+            // No filter — show everything
+            sections.forEach(el => el.style.display = '');
+            cards.forEach(el => el.style.display = '');
+            tables.forEach(el => el.style.display = '');
+        } else {
+            // Filter by label text — check section labels and card content
+            const filterLower = filter.toLowerCase();
+            sections.forEach(el => {
+                const label = (el.getAttribute('label') || '').toLowerCase();
+                const matches = label.includes(filterLower) || filterLower.includes(label.replace(/\s*\(.*\)/, ''));
+                el.style.display = matches ? '' : 'none';
+            });
+            // If no sections matched, try filtering cards directly
+            const visibleSections = [...sections].filter(el => el.style.display !== 'none');
+            if (visibleSections.length === 0) {
+                cards.forEach(el => {
+                    const text = el.textContent?.toLowerCase() || '';
+                    el.style.display = text.includes(filterLower) ? '' : 'none';
+                });
+            }
+        }
+    });
+
     container.addEventListener('mcpui-card-action', (e) => {
         const { title, status, itemId } = e.detail || {};
         if (title) {
