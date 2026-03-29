@@ -722,6 +722,19 @@ body {
     flex-shrink: 0;
     line-height: 1;
 }
+.mcpui-node-info {
+    background: none;
+    border: none;
+    color: var(--mcpui-text-muted, #9ca3af);
+    cursor: help;
+    padding: 0 4px;
+    opacity: 0;
+    transition: opacity var(--mcpui-transition-fast);
+    flex-shrink: 0;
+    line-height: 1;
+}
+.mcpui-node-header:hover .mcpui-node-info { opacity: 1; }
+.mcpui-node-info:hover { color: var(--mcpui-accent, #4f6df5); }
 .mcpui-node-header:hover .mcpui-node-delete { opacity: 1; }
 .mcpui-node-delete:hover {
     color: var(--mcpui-error, #ef4444);
