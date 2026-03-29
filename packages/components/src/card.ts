@@ -18,23 +18,30 @@ export class McpuiCard extends LitElement {
         }
         .card {
             background: var(--mcpui-surface, #fff);
-            border-radius: var(--mcpui-radius-md, 8px);
+            border-radius: var(--mcpui-radius-md, 4px);
             border: 1px solid var(--mcpui-border-muted, #e5e7eb);
-            border-top: 3px solid var(--mcpui-border-muted, #e5e7eb);
             overflow: hidden;
             box-shadow: var(--mcpui-shadow-sm);
             transition: transform var(--mcpui-transition-fast), box-shadow var(--mcpui-transition-fast);
+            position: relative;
+        }
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: var(--mcpui-border-muted, #e5e7eb);
         }
         .card:hover, .card:focus {
             transform: translateY(-1px);
             box-shadow: var(--mcpui-shadow-md);
         }
         .card:focus { outline: 2px solid var(--mcpui-accent, #4f6df5); outline-offset: 2px; }
-        .card[data-status="success"] { border-top-color: var(--mcpui-border-success, #dcfce7); }
-        .card[data-status="healthy"] { border-top-color: var(--mcpui-border-success, #dcfce7); }
-        .card[data-status="warning"] { border-top-color: var(--mcpui-border-warning, #fef9c3); }
-        .card[data-status="error"] { border-top-color: var(--mcpui-border-error, #fee2e2); }
-        .card[data-status="failing"] { border-top-color: var(--mcpui-border-error, #fee2e2); }
+        .card[data-status="success"]::before,
+        .card[data-status="healthy"]::before { background: var(--mcpui-success, #22c55e); }
+        .card[data-status="warning"]::before { background: var(--mcpui-warning, #eab308); }
+        .card[data-status="error"]::before,
+        .card[data-status="failing"]::before { background: var(--mcpui-error, #ef4444); }
         .card-header {
             padding: var(--mcpui-space-md, 12px) var(--mcpui-space-lg, 16px) var(--mcpui-space-sm, 8px);
             display: flex; align-items: center; justify-content: space-between;

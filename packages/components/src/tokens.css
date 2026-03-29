@@ -50,9 +50,9 @@
     --mcpui-font-size-2xl: 24px;
 
     /* ── Borders & Radius ── */
-    --mcpui-radius-sm: 4px;
-    --mcpui-radius-md: 8px;
-    --mcpui-radius-lg: 12px;
+    --mcpui-radius-sm: 2px;
+    --mcpui-radius-md: 4px;
+    --mcpui-radius-lg: 8px;
     --mcpui-radius-pill: 20px;
     --mcpui-radius-round: 50%;
 
