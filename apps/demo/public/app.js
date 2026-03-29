@@ -1168,12 +1168,11 @@ function transformOutput(html) {
             return;
         }
 
-        // Cards in a listing context (inside sections with counts) should be info
-        // unless they have explicit warning/error meaning
+        // Cards in listing context: only override "success" → "info"
+        // Let meaningful statuses pass through (open, closed, bug, etc.)
         if (status === 'success') {
             const parentSection = card.closest('mcpui-section');
             if (parentSection) {
-                // Cards inside a section are data items, not action results
                 card.setAttribute('status', 'info');
             }
         }

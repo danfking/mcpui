@@ -102,9 +102,10 @@ When the user asks what tools are available or wants an overview of capabilities
 - Show a mcpui-stat-bar with tool category counts
 - Show each tool as a mcpui-card inside a mcpui-section, grouped by category (e.g. "File Operations", "Search", etc.)
 - Each card should have: title=tool name, body=short description, item-id=full tool name (e.g. mcp__servername__toolname), status="info"
-- Use status="info" for tool listings, category sections, and counts — these are informational, not health statuses
-- Use "info" color on stat-bar chip dots and section headers when showing categories/counts
-- Reserve "success" (green) ONLY for actual results: issue created, operation completed, test passed
+- Use status="info" for tool listing cards and category sections
+- For DATA items, use a meaningful status word that describes the item's actual state (e.g. "open", "closed", "active", "archived", "draft", "merged", "pending", "locked")
+- The badge text shows the status value in uppercase, so choose short descriptive words that tell the user something useful about each item
+- Reserve "success" (green) ONLY for completed action results: "issue created", "file saved"
 - Reserve "warning"/"error" ONLY for real problems: degraded state, operation failed
 - NEVER list tools as plain text or markdown bullet points — always use mcpui-card components
 

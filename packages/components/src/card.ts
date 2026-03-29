@@ -143,10 +143,17 @@ export class McpuiCard extends LitElement {
 
     render() {
         // Layer 3: Component-level validation — normalize status to valid values
-        const VALID_STATUSES = new Set(['success', 'warning', 'error', 'muted', 'info', 'healthy', 'failing', 'no-data']);
-        if (this.status && !VALID_STATUSES.has(this.status)) {
-            this.status = 'muted';
-        }
+        // Map custom status values to color groups for styling
+        // Known RAG: success, warning, error + aliases
+        // Everything else gets "info" coloring but keeps its badge text
+        const STATUS_COLOR_MAP: Record<string, string> = {
+            success: 'success', healthy: 'success', merged: 'success', resolved: 'success',
+            warning: 'warning', draft: 'warning', pending: 'warning',
+            error: 'error', failing: 'error', failed: 'error',
+            muted: 'muted', 'no-data': 'muted', locked: 'muted', archived: 'muted',
+            info: 'info',
+        };
+        const statusColor = STATUS_COLOR_MAP[(this.status || '').toLowerCase()] || 'info';
 
         if (this._parseError) {
             return html`<div class="card" data-status="muted"><div class="error-state" role="alert">Unable to display data</div></div>`;
@@ -157,12 +164,13 @@ export class McpuiCard extends LitElement {
         catch { this._parseError = true; return; }
 
         const s = this.status || 'muted';
+        const badgeText = s.toUpperCase();
         return html`
-            <div class="card" data-status="${s}" role="article" aria-label="${this.title || ''}"
+            <div class="card" data-status="${statusColor}" role="article" aria-label="${this.title || ''}"
                  @click=${this._handleClick} @keydown=${this._handleKeydown}>
                 <div class="card-header">
                     <span class="card-title">${this.title}</span>
-                    <span class="card-badge" data-status="${s}">${s}</span>
+                    <span class="card-badge" data-status="${statusColor}">${badgeText}</span>
                 </div>
                 ${this.body ? html`<div class="card-body">${this.body}</div>` : ''}
                 ${metaData.length > 0 ? html`
