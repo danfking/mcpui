@@ -38,15 +38,34 @@
     <script type="module" src="/components/chart.js"></script>
     <script type="module" src="/components/section.js"></script>
     <script type="module" src="/components/metric.js"></script>
-    <script type="module" src="/components/message.js"></script>
 
     <!-- App -->
     <script type="module" src="/app.js"></script>
 </head>
 <body>
+    <!-- Session Panel (left) -->
+    <aside id="session-panel" class="mcpui-session-panel">
+        <div class="mcpui-session-panel-header">
+            <span class="mcpui-session-panel-title">Sessions</span>
+            <button id="btn-new-session" class="mcpui-session-new-btn" title="New conversation">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
+        <div id="session-list" class="mcpui-session-list">
+            <!-- Session items rendered by JS -->
+        </div>
+    </aside>
+
     <!-- Header -->
     <header class="mcpui-header">
         <div class="mcpui-header-left">
+            <button id="btn-toggle-sessions" class="mcpui-header-btn mcpui-mobile-only" title="Sessions">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+                    <path d="M2 4h14M2 9h14M2 14h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+                </svg>
+            </button>
             <span class="mcpui-logo">MCPUI</span>
             <span class="mcpui-breadcrumb" id="breadcrumb">Dashboard</span>
         </div>
@@ -60,17 +79,11 @@
                     <path d="M2 4c0-1 3.6-2 8-2s8 1 8 2v2c0 1-3.6 2-8 2S2 7 2 6V4zm0 5c1.6 1 4.6 1.5 8 1.5S16.4 10 18 9v3c0 1-3.6 2-8 2S2 13 2 12V9zm0 5c1.6 1 4.6 1.5 8 1.5S16.4 15 18 14v2c0 1-3.6 2-8 2S2 17 2 16v-2z"/>
                 </svg>
             </button>
-            <button id="btn-toggle-sidebar" class="mcpui-header-btn" title="Toggle chat">
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
-                    <path d="M2 3h14v10H5l-3 3V3z"/>
-                </svg>
-            </button>
         </div>
     </header>
 
     <!-- Main layout -->
     <div class="mcpui-layout">
-        <!-- Content area -->
         <main id="content-area" class="mcpui-content">
             <div id="dashboard-container" class="mcpui-dashboard">
                 <div class="mcpui-empty-state">
@@ -90,19 +103,6 @@
                 </div>
             </div>
         </main>
-
-        <!-- Chat sidebar -->
-        <aside id="sidebar" class="mcpui-sidebar">
-            <div class="mcpui-sidebar-header">
-                <h3>Conversation</h3>
-                <button id="btn-new-chat" class="mcpui-sidebar-btn" title="New conversation">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                        <path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                </button>
-            </div>
-            <div id="chat-messages" class="mcpui-chat-messages"></div>
-        </aside>
     </div>
 
     <!-- Prompt bar -->
