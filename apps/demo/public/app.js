@@ -35,6 +35,29 @@ function getActiveSession() {
     return sessions.find(s => s.id === activeSessionId);
 }
 
+// ── Tree Utilities ──
+function getNodeById(session, id) { return session.nodes.find(n => n.id === id); }
+function getChildren(session, nodeId) { return session.nodes.filter(n => n.parentId === nodeId); }
+function getRootNodes(session) { return session.nodes.filter(n => !n.parentId); }
+
+function getAncestryPath(session, nodeId) {
+    const path = [];
+    let current = getNodeById(session, nodeId);
+    while (current) {
+        path.unshift(current);
+        current = current.parentId ? getNodeById(session, current.parentId) : null;
+    }
+    return path;
+}
+
+function getActivePath(session) {
+    if (!session.activeNodeId) return new Set();
+    return new Set(getAncestryPath(session, session.activeNodeId).map(n => n.id));
+}
+
+// Track which node to branch from (set when user clicks "Branch" button)
+let branchFromNodeId = null;
+
 // ── Persistence ──
 function saveState() {
     try {
@@ -236,6 +259,7 @@ function createNodeEl(node) {
             <span class="mcpui-node-prompt">${escapeHtml(node.promptDisplay || node.prompt)}</span>
             <span class="mcpui-node-summary">${escapeHtml(summaryText)}</span>
             <span class="mcpui-node-time">${formatTimeAgo(node.timestamp)}</span>
+            <button class="mcpui-node-branch" data-branch-node="${node.id}" title="Branch from here">\u2387</button>
             <button class="mcpui-node-delete" data-delete-node="${node.id}" title="Delete this step">\u00d7</button>
         </div>
         <div class="mcpui-node-content"></div>
@@ -252,6 +276,15 @@ function createNodeEl(node) {
     header.querySelector('.mcpui-node-delete')?.addEventListener('click', (e) => {
         e.stopPropagation();
         deleteNode(node.id);
+    });
+    header.querySelector('.mcpui-node-branch')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        branchFromNodeId = node.id;
+        const promptInput = document.getElementById('prompt-input');
+        if (promptInput) {
+            promptInput.focus();
+            promptInput.placeholder = `Branch from "${(node.promptDisplay || node.prompt).substring(0, 30)}..."`;
+        }
     });
 
     return div;
@@ -283,44 +316,47 @@ function scrollToNode(nodeId, highlight = true) {
     saveState();
 }
 
+function getDescendantIds(session, nodeId) {
+    const ids = [nodeId];
+    const children = getChildren(session, nodeId);
+    for (const child of children) {
+        ids.push(...getDescendantIds(session, child.id));
+    }
+    return ids;
+}
+
 function deleteNode(nodeId) {
     const session = getActiveSession();
     if (!session) return;
 
-    // Find the node index and count children below it
-    const idx = session.nodes.findIndex(n => n.id === nodeId);
-    if (idx === -1) return;
+    const node = getNodeById(session, nodeId);
+    if (!node) return;
 
-    const deleteCount = session.nodes.length - idx;
-    const noun = deleteCount === 1 ? 'this step' : `this step and ${deleteCount - 1} step${deleteCount > 2 ? 's' : ''} below it`;
+    // Count all descendants
+    const removeIds = new Set(getDescendantIds(session, nodeId));
+    const count = removeIds.size;
+    const noun = count === 1 ? 'this step' : `this step and ${count - 1} descendant${count > 2 ? 's' : ''}`;
 
     if (!confirm(`Delete ${noun}? This cannot be undone.`)) return;
 
-    // Remove this node and all children (everything from idx onward)
-    const removedIds = session.nodes.slice(idx).map(n => n.id);
-    session.nodes = session.nodes.slice(0, idx);
-
-    // Remove DOM elements
-    for (const id of removedIds) {
-        document.querySelector(`.mcpui-node[data-node-id="${id}"]`)?.remove();
+    // Remove from parent's children array
+    if (node.parentId) {
+        const parent = getNodeById(session, node.parentId);
+        if (parent?.children) {
+            parent.children = parent.children.filter(id => id !== nodeId);
+        }
     }
 
-    // If all nodes deleted, show empty state
-    if (session.nodes.length === 0) {
-        const container = document.getElementById('dashboard-container');
-        if (container) {
-            container.innerHTML = getSuggestionSkeleton();
-            loadDynamicSuggestions(container);
-        }
-    } else {
-        // Expand the new last node
-        const lastNode = session.nodes[session.nodes.length - 1];
-        lastNode.collapsed = false;
-        const el = document.querySelector(`.mcpui-node[data-node-id="${lastNode.id}"]`);
-        if (el) el.dataset.collapsed = 'false';
+    // Remove all descendants from nodes array
+    session.nodes = session.nodes.filter(n => !removeIds.has(n.id));
+
+    // Update active node if it was deleted
+    if (removeIds.has(session.activeNodeId)) {
+        session.activeNodeId = node.parentId || (session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null);
     }
 
     session.updatedAt = Date.now();
+    renderMainContent();
     renderSessionList();
     saveState();
 }
@@ -374,7 +410,7 @@ function updateNodeHeader(nodeId) {
     summaryEl.textContent = parts.length > 0 ? parts.join(' \u2022 ') : '';
 }
 
-// ── Main Content Rendering ──
+// ── Main Content Rendering (Tree) ──
 function renderMainContent() {
     const container = document.getElementById('dashboard-container');
     if (!container) return;
@@ -387,30 +423,73 @@ function renderMainContent() {
     }
 
     container.innerHTML = '';
-    for (let i = 0; i < session.nodes.length; i++) {
-        const node = session.nodes[i];
-        if (i < session.nodes.length - 1) node.collapsed = true;
-        else node.collapsed = false;
+    const activePath = getActivePath(session);
+    const roots = getRootNodes(session);
 
-        const nodeEl = createNodeEl(node);
-        container.appendChild(nodeEl);
+    const treeWrapper = document.createElement('div');
+    treeWrapper.className = 'mcpui-tree';
+    container.appendChild(treeWrapper);
 
-        if (node.response) {
-            const contentEl = nodeEl.querySelector('.mcpui-node-content');
-            if (node.type === 'components') {
-                const clean = transformOutput(DOMPurify.sanitize(extractHtmlContent(node.response), PURIFY_CONFIG));
-                const temp = document.createElement('template');
-                temp.innerHTML = clean;
-                contentEl.appendChild(temp.content);
-            } else {
-                contentEl.innerHTML = `<div class="mcpui-text-response">${renderMarkdown(node.response)}</div>`;
-            }
+    for (const root of roots) {
+        renderTreeNode(treeWrapper, session, root, activePath);
+    }
+
+    // Scroll to active node
+    if (session.activeNodeId) {
+        setTimeout(() => scrollToNode(session.activeNodeId, false), 100);
+    }
+}
+
+function renderTreeNode(container, session, node, activePath) {
+    const isActive = activePath.has(node.id);
+
+    // Collapse non-active nodes (except the active leaf)
+    const isActiveLeaf = node.id === getActiveSession()?.activeNodeId;
+    node.collapsed = !isActiveLeaf;
+
+    const nodeEl = createNodeEl(node);
+    if (!isActive) nodeEl.classList.add('mcpui-node-dimmed');
+    container.appendChild(nodeEl);
+
+    // Populate content
+    if (node.response) {
+        const contentEl = nodeEl.querySelector('.mcpui-node-content');
+        if (node.type === 'components') {
+            const clean = transformOutput(DOMPurify.sanitize(extractHtmlContent(node.response), PURIFY_CONFIG));
+            const temp = document.createElement('template');
+            temp.innerHTML = clean;
+            contentEl.appendChild(temp.content);
+        } else {
+            contentEl.innerHTML = `<div class="mcpui-text-response">${renderMarkdown(node.response)}</div>`;
         }
     }
 
-    const lastNode = session.nodes[session.nodes.length - 1];
-    if (lastNode) {
-        setTimeout(() => scrollToNode(lastNode.id, false), 100);
+    const children = getChildren(session, node.id);
+    if (children.length === 0) return;
+
+    if (children.length === 1) {
+        // Single child — continue vertically
+        const connector = document.createElement('div');
+        connector.className = 'mcpui-tree-connector';
+        container.appendChild(connector);
+        renderTreeNode(container, session, children[0], activePath);
+    } else {
+        // Multiple children — branch horizontally
+        const connector = document.createElement('div');
+        connector.className = 'mcpui-tree-connector';
+        container.appendChild(connector);
+
+        const branchContainer = document.createElement('div');
+        branchContainer.className = 'mcpui-tree-branches';
+        container.appendChild(branchContainer);
+
+        for (const child of children) {
+            const branchCol = document.createElement('div');
+            branchCol.className = 'mcpui-tree-branch-col';
+            if (activePath.has(child.id)) branchCol.classList.add('active');
+            branchContainer.appendChild(branchCol);
+            renderTreeNode(branchCol, session, child, activePath);
+        }
     }
 }
 
@@ -675,11 +754,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const emptyState = container.querySelector('.mcpui-empty-state');
         if (emptyState) emptyState.remove();
 
-        // Create new node
+        // Create new node — attach to branch point or last leaf
         const nodeId = generateId();
+        let parentId = null;
+        if (branchFromNodeId) {
+            parentId = branchFromNodeId;
+            branchFromNodeId = null; // consume
+        } else if (session.activeNodeId) {
+            parentId = session.activeNodeId;
+        } else if (session.nodes.length > 0) {
+            parentId = session.nodes[session.nodes.length - 1].id;
+        }
+
         const node = {
             id: nodeId,
-            parentId: session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null,
+            parentId,
+            children: [],
             prompt,
             promptDisplay: displayLabel || (prompt.length > 60 ? prompt.substring(0, 60) + '...' : prompt),
             _hasExplicitLabel: !!displayLabel,
@@ -687,10 +777,22 @@ document.addEventListener('DOMContentLoaded', () => {
             type: 'text',
             summary: '',
             tags: [],
+            stats: null,
             timestamp: Date.now(),
             collapsed: false,
         };
+
+        // Update parent's children array
+        if (parentId) {
+            const parent = getNodeById(session, parentId);
+            if (parent) {
+                if (!parent.children) parent.children = [];
+                if (!parent.children.includes(nodeId)) parent.children.push(nodeId);
+            }
+        }
+
         session.nodes.push(node);
+        session.activeNodeId = nodeId;
         session.updatedAt = Date.now();
 
         // Auto-title session from first prompt
@@ -699,14 +801,14 @@ document.addEventListener('DOMContentLoaded', () => {
             renderSessionList();
         }
 
-        // Auto-collapse previous nodes
-        collapseAllExcept(nodeId);
+        // Re-render the full tree (handles branching layout)
+        renderMainContent();
 
-        const nodeEl = createNodeEl(node);
-        container.appendChild(nodeEl);
-        const contentEl = nodeEl.querySelector('.mcpui-node-content');
-        contentEl.innerHTML = getProgressHtml();
-        nodeEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Get the newly created node's content area
+        const nodeEl = document.querySelector(`.mcpui-node[data-node-id="${nodeId}"]`);
+        const contentEl = nodeEl?.querySelector('.mcpui-node-content');
+        if (contentEl) contentEl.innerHTML = getProgressHtml();
+        if (nodeEl) nodeEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
         submitBtn.classList.add('cancel');
         submitBtn.innerHTML = ICON_STOP;

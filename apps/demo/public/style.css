@@ -124,6 +124,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: var(--mcpui-space-lg, 16px);
+    overflow-x: auto;
 }
 
 /* ── Inline Prompt Bubble ── */
@@ -633,7 +634,58 @@ body {
     color: var(--mcpui-text-muted, #9ca3af);
     flex-shrink: 0;
 }
-.mcpui-node-delete {
+/* ── Tree Layout ── */
+.mcpui-tree {
+    display: flex;
+    flex-direction: column;
+    min-width: min-content;
+}
+.mcpui-tree-connector {
+    width: 2px;
+    height: 12px;
+    background: var(--mcpui-border, #e5e7eb);
+    margin: 0 auto;
+}
+.mcpui-tree-branches {
+    display: flex;
+    gap: 16px;
+    position: relative;
+    padding-top: 16px;
+}
+.mcpui-tree-branches::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 40px;
+    right: 40px;
+    height: 2px;
+    background: var(--mcpui-border, #e5e7eb);
+}
+.mcpui-tree-branch-col {
+    min-width: 400px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+.mcpui-tree-branch-col::before {
+    content: '';
+    position: absolute;
+    top: -16px;
+    left: 50%;
+    width: 2px;
+    height: 16px;
+    background: var(--mcpui-border, #e5e7eb);
+}
+.mcpui-tree-branch-col:not(.active) {
+    opacity: 0.5;
+}
+.mcpui-node-dimmed {
+    opacity: 0.6;
+}
+
+/* ── Node Action Buttons ── */
+.mcpui-node-branch, .mcpui-node-delete {
     background: none;
     border: none;
     color: var(--mcpui-text-muted, #9ca3af);
@@ -646,7 +698,12 @@ body {
     flex-shrink: 0;
     line-height: 1;
 }
+.mcpui-node-header:hover .mcpui-node-branch,
 .mcpui-node-header:hover .mcpui-node-delete { opacity: 1; }
+.mcpui-node-branch:hover {
+    color: var(--mcpui-accent, #4f6df5);
+    background: rgba(79, 109, 245, 0.08);
+}
 .mcpui-node-delete:hover {
     color: var(--mcpui-error, #ef4444);
     background: var(--mcpui-border-error, #fee2e2);
