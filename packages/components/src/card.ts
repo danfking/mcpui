@@ -38,11 +38,11 @@ export class McpuiCard extends LitElement {
         }
         .card:focus { outline: 2px solid var(--mcpui-accent, #4f6df5); outline-offset: 2px; }
         .card[data-status="success"]::before,
-        .card[data-status="healthy"]::before { background: var(--mcpui-success, #22c55e); }
-        .card[data-status="warning"]::before { background: var(--mcpui-warning, #eab308); }
+        .card[data-status="healthy"]::before { background: var(--mcpui-success, #16a34a); }
+        .card[data-status="warning"]::before { background: var(--mcpui-warning, #ca8a04); }
         .card[data-status="error"]::before,
-        .card[data-status="failing"]::before { background: var(--mcpui-error, #ef4444); }
-        .card[data-status="info"]::before { background: var(--mcpui-accent, #4f6df5); }
+        .card[data-status="failing"]::before { background: var(--mcpui-error, #dc2626); }
+        .card[data-status="info"]::before { background: var(--mcpui-info, #6366f1); }
         .card-header {
             padding: var(--mcpui-space-md, 12px) var(--mcpui-space-lg, 16px) var(--mcpui-space-sm, 8px);
             display: flex; align-items: center; justify-content: space-between;
@@ -64,7 +64,7 @@ export class McpuiCard extends LitElement {
             color: var(--mcpui-text-muted); background: var(--mcpui-border-muted);
         }
         .card-badge[data-status="info"] {
-            color: var(--mcpui-accent, #4f6df5); background: rgba(79, 109, 245, 0.1);
+            color: var(--mcpui-info, #6366f1); background: var(--mcpui-border-info, #c7d2fe);
         }
         .card-body {
             padding: 0 var(--mcpui-space-lg, 16px) var(--mcpui-space-md, 12px);
