@@ -826,12 +826,15 @@ document.addEventListener('DOMContentLoaded', () => {
             parentId = session.nodes[session.nodes.length - 1].id;
         }
 
+        // Store the user's original input for display (before context augmentation)
+        const userPrompt = prompt;
+
         const node = {
             id: nodeId,
             parentId,
             children: [],
-            prompt,
-            promptDisplay: displayLabel || (prompt.length > 60 ? prompt.substring(0, 60) + '...' : prompt),
+            prompt: userPrompt,
+            promptDisplay: displayLabel || (userPrompt.length > 60 ? userPrompt.substring(0, 60) + '...' : userPrompt),
             _hasExplicitLabel: !!displayLabel,
             response: '',
             type: 'text',
