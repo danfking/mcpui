@@ -594,10 +594,12 @@ document.addEventListener('DOMContentLoaded', () => {
     container.addEventListener('mcpui-action', (e) => {
         const { label, action, prompt } = e.detail || {};
         if (!prompt) return;
-        // Write actions will be handled by getDrillDownPrompt's write detection
-        // Read actions are sent directly as prompts
         promptInput.value = prompt + '. Use ONLY mcpui-* web components.';
-        handleSubmit(label);
+        // Build a contextual display label from the prompt
+        // Extract key context: take the first sentence up to ~60 chars
+        const contextSummary = prompt.split(/[.!]/)[0].substring(0, 60);
+        const displayLabel = contextSummary.length > label.length ? contextSummary : label;
+        handleSubmit(displayLabel);
     });
 
     // ── Form field lookups ──
