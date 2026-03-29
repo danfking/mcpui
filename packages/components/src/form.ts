@@ -25,6 +25,7 @@ export class McpuiForm extends LitElement {
         _lookupResults: { state: true },
         _lookupField: { state: true },
         _lookupLoading: { state: true },
+        _lookupStatus: { state: true },
     };
 
     static styles = css`
@@ -136,6 +137,7 @@ export class McpuiForm extends LitElement {
     declare _lookupResults: LookupResult[];
     declare _lookupField: string;
     declare _lookupLoading: boolean;
+    declare _lookupStatus: string;
 
     constructor() {
         super();
@@ -144,6 +146,7 @@ export class McpuiForm extends LitElement {
         this._lookupResults = [];
         this._lookupField = '';
         this._lookupLoading = false;
+        this._lookupStatus = 'Searching...';
     }
 
     private _getFields(): FormField[] {
@@ -163,16 +166,27 @@ export class McpuiForm extends LitElement {
         this._lookupField = field.key;
         this._lookupResults = [];
         this._lookupLoading = true;
+        this._lookupStatus = 'Searching...';
+
+        // Get current input value to use as search query
+        const input = this.shadowRoot?.querySelector(`[data-key="${field.key}"]`) as HTMLInputElement | null;
+        const query = input?.value?.trim() || '';
 
         this.dispatchEvent(new CustomEvent('mcpui-form-lookup', {
             detail: {
                 fieldKey: field.key,
                 prompt: field.lookup.prompt,
+                query,
                 toolId: this['tool-id'],
             },
             bubbles: true,
             composed: true,
         }));
+    }
+
+    /** Update the loading status text (called externally for transparency) */
+    setLookupStatus(status: string) {
+        this._lookupStatus = status;
     }
 
     private _selectLookupResult(fieldKey: string, value: string) {
@@ -264,7 +278,7 @@ export class McpuiForm extends LitElement {
 
     private _renderLookupDropdown(fieldKey: string) {
         if (this._lookupLoading) {
-            return html`<div class="form-lookup-results"><div class="form-lookup-loading">Searching...</div></div>`;
+            return html`<div class="form-lookup-results"><div class="form-lookup-loading">${this._lookupStatus || 'Searching...'}</div></div>`;
         }
         if (this._lookupResults.length === 0) {
             return html`<div class="form-lookup-results"><div class="form-lookup-empty">No results found</div></div>`;
