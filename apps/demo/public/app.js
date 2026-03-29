@@ -241,24 +241,26 @@ function createNodeEl(node) {
     div.dataset.nodeId = node.id;
     div.dataset.collapsed = String(node.collapsed);
 
-    // Build summary: stats (duration, tokens, cost) + content summary
-    const summaryParts = [];
+    // Build stats tooltip content
+    const statsParts = [];
     if (node.stats) {
         const dur = (node.stats.durationMs / 1000).toFixed(1);
         const tokens = (node.stats.inputTokens || 0) + (node.stats.outputTokens || 0);
-        summaryParts.push(`${dur}s`);
-        if (tokens > 0) summaryParts.push(`${tokens.toLocaleString()} tokens`);
-        if (node.stats.costUsd) summaryParts.push(`$${node.stats.costUsd.toFixed(4)}`);
+        statsParts.push(`${dur}s`);
+        if (tokens > 0) statsParts.push(`${tokens.toLocaleString()} tokens`);
+        if (node.stats.costUsd) statsParts.push(`$${node.stats.costUsd.toFixed(4)}`);
     }
-    if (node.summary) summaryParts.push(node.summary);
-    const summaryText = summaryParts.join(' \u2022 ');
+    if (node.summary) statsParts.push(node.summary);
+    const statsTooltip = statsParts.join(' \u2022 ');
 
     div.innerHTML = `
         <div class="mcpui-node-header" role="button" tabindex="0">
             <span class="mcpui-node-chevron">\u25bc</span>
             <span class="mcpui-node-prompt">${escapeHtml(node.promptDisplay || node.prompt)}</span>
-            <span class="mcpui-node-summary">${escapeHtml(summaryText)}</span>
             <span class="mcpui-node-time">${formatTimeAgo(node.timestamp)}</span>
+            ${statsTooltip ? `<button class="mcpui-node-info" title="${escapeAttr(statsTooltip)}">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="8" y="12" text-anchor="middle" font-size="10" font-weight="600" fill="currentColor">i</text></svg>
+            </button>` : ''}
             <button class="mcpui-node-delete" data-delete-node="${node.id}" title="Delete this step">\u00d7</button>
         </div>
         <div class="mcpui-node-content"></div>
@@ -392,8 +394,6 @@ function updateNodeHeader(nodeId) {
     if (!node) return;
     const el = document.querySelector(`.mcpui-node[data-node-id="${nodeId}"]`);
     if (!el) return;
-    const summaryEl = el.querySelector('.mcpui-node-summary');
-    if (!summaryEl) return;
 
     const parts = [];
     if (node.stats) {
@@ -405,7 +405,20 @@ function updateNodeHeader(nodeId) {
     }
     if (node.summary) parts.push(node.summary);
 
-    summaryEl.textContent = parts.length > 0 ? parts.join(' \u2022 ') : '';
+    const infoBtn = el.querySelector('.mcpui-node-info');
+    if (infoBtn) {
+        infoBtn.title = parts.join(' \u2022 ');
+    } else if (parts.length > 0) {
+        // Insert info button if it doesn't exist yet
+        const deleteBtn = el.querySelector('.mcpui-node-delete');
+        if (deleteBtn) {
+            const btn = document.createElement('button');
+            btn.className = 'mcpui-node-info';
+            btn.title = parts.join(' \u2022 ');
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="8" y="12" text-anchor="middle" font-size="10" font-weight="600" fill="currentColor">i</text></svg>';
+            deleteBtn.parentNode.insertBefore(btn, deleteBtn);
+        }
+    }
 }
 
 // ── Main Content Rendering (Tree) ──
