@@ -96,6 +96,26 @@ app.delete('/api/servers/:name', async (c) => {
     }
 });
 
+// Lightweight lookup — sends a prompt through the LLM and extracts JSON results
+app.post('/api/lookup', async (c) => {
+    const { prompt } = await c.req.json<{ prompt: string }>();
+    const conv = conversations.getOrCreate(null);
+    conversations.addMessage(conv.id, 'user', prompt);
+
+    let result = '';
+    for await (const chunk of llm.streamResponse(conv.id)) {
+        if (chunk.type === 'content') result += chunk.text;
+    }
+
+    // Try to extract JSON array from the response
+    try {
+        const match = result.match(/\[[\s\S]*?\]/);
+        if (match) return c.json({ results: JSON.parse(match[0]) });
+    } catch { /* fall through */ }
+
+    return c.json({ results: [], raw: result });
+});
+
 // --- Static Files ---
 
 // Resolve paths relative to the repo root (apps/demo/server -> ../../..)
