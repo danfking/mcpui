@@ -146,17 +146,12 @@ export function getServerInfo(): Array<{ name: string; toolCount: number; tools:
 export async function executeTool(
     toolName: string,
     args: Record<string, unknown>,
-    options?: { skipGuard?: boolean },
 ): Promise<string> {
-    // Layer 1: Pre-execution guard — blocks write tools unless authorized
-    if (!options?.skipGuard) {
-        const { guardToolExecution } = await import('./guards.js');
-        const guard = guardToolExecution(toolName, args);
-        if (!guard.allowed) {
-            console.warn(`[mcp-hub] Guard blocked: ${guard.reason}`);
-            return JSON.stringify({ blocked: true, reason: guard.reason });
-        }
-    }
+    // Note: Write tool guards are enforced at the frontend layer
+    // (getDrillDownPrompt renders forms for write tools) and the
+    // output transformation layer (transformOutput normalizes output).
+    // The CLI backend handles tool calls internally via --mcp-config,
+    // so guards here only apply to the API backend path.
 
     for (const server of servers) {
         const tool = server.tools.find(t => t.name === toolName);
