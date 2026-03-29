@@ -572,17 +572,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Form field lookups ──
     container.addEventListener('mcpui-form-lookup', async (e) => {
-        const { fieldKey, prompt, query } = e.detail || {};
+        const { fieldKey, prompt, query, context } = e.detail || {};
         const formEl = e.target;
         if (!formEl || !fieldKey) return;
 
-        // Include the user's typed query in the search
+        // Build contextual prompt with other field values
         const queryClause = query ? ` matching "${query}"` : '';
+        let contextClause = '';
+        if (context && Object.keys(context).length > 0) {
+            const parts = Object.entries(context).map(([k, v]) => `${k}="${v}"`);
+            contextClause = ` (context: ${parts.join(', ')})`;
+        }
+
         const toolHint = prompt.toLowerCase().includes('user') ? 'search_users'
             : prompt.toLowerCase().includes('repo') ? 'search_repositories'
             : 'the appropriate search tool';
 
-        // Show what we're doing
         formEl.setLookupStatus(`Calling ${toolHint}${query ? ` for "${query}"` : ''}...`);
 
         try {
@@ -590,7 +595,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt: `${prompt}${queryClause}. Call the appropriate tool to get real results. Return ONLY a JSON array of objects with "value" and "label" string fields. No markdown, no code fences, no explanation — just the raw JSON array. Example format: [{"value":"octocat","label":"octocat (The Octocat)"}]. Limit to 10 results.`,
+                    prompt: `${prompt}${queryClause}${contextClause}. Use the context values to filter results — for example if owner is set, search for repositories belonging to that owner. Call the appropriate tool to get real results. Return ONLY a JSON array of objects with "value" and "label" string fields. No markdown, no code fences, no explanation — just the raw JSON array. Example format: [{"value":"my-repo","label":"my-repo (My Repository)"}]. Limit to 10 results.`,
                 }),
             });
             const data = await res.json();
