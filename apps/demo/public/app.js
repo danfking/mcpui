@@ -572,16 +572,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Form field lookups ──
     container.addEventListener('mcpui-form-lookup', async (e) => {
-        const { fieldKey, prompt } = e.detail || {};
+        const { fieldKey, prompt, query } = e.detail || {};
         const formEl = e.target;
         if (!formEl || !fieldKey) return;
+
+        // Include the user's typed query in the search
+        const queryClause = query ? ` matching "${query}"` : '';
+        const toolHint = prompt.toLowerCase().includes('user') ? 'search_users'
+            : prompt.toLowerCase().includes('repo') ? 'search_repositories'
+            : 'the appropriate search tool';
+
+        // Show what we're doing
+        formEl.setLookupStatus(`Calling ${toolHint}${query ? ` for "${query}"` : ''}...`);
 
         try {
             const res = await fetch('/api/lookup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt: `${prompt}. Return ONLY a JSON array of objects with "value" and "label" string fields. No markdown, no code fences, no explanation — just the raw JSON array. Example format: [{"value":"octocat","label":"octocat (The Octocat)"}]. Limit to 10 results.`,
+                    prompt: `${prompt}${queryClause}. Call the appropriate tool to get real results. Return ONLY a JSON array of objects with "value" and "label" string fields. No markdown, no code fences, no explanation — just the raw JSON array. Example format: [{"value":"octocat","label":"octocat (The Octocat)"}]. Limit to 10 results.`,
                 }),
             });
             const data = await res.json();
