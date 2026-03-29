@@ -6,7 +6,7 @@ export class McpuiStatBar extends LitElement {
     };
 
     static styles = css`
-        :host { display: block; }
+        :host { display: block; width: 100%; min-width: 0; }
         .stat-bar { display: flex; gap: var(--mcpui-space-md, 12px); flex-wrap: wrap; }
         .stat-chip {
             display: flex; align-items: center; gap: var(--mcpui-space-sm, 8px);
