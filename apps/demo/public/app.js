@@ -1098,11 +1098,12 @@ function transformOutput(html) {
     const root = doc.body.firstElementChild;
     if (!root) return html;
 
-    // Rule 1: Force status="success" on all tool cards (identified by item-id containing '__')
+    // Rule 1: Tool listing cards use "info" status (blue), not RAG colors
+    // RAG (success/warning/error) should only be used for actual state/results
     root.querySelectorAll('mcpui-card').forEach(card => {
         const itemId = card.getAttribute('item-id') || '';
         if (itemId.includes('__')) {
-            card.setAttribute('status', 'success');
+            card.setAttribute('status', 'info');
         }
     });
 

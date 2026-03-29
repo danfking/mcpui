@@ -42,6 +42,7 @@ export class McpuiCard extends LitElement {
         .card[data-status="warning"]::before { background: var(--mcpui-warning, #eab308); }
         .card[data-status="error"]::before,
         .card[data-status="failing"]::before { background: var(--mcpui-error, #ef4444); }
+        .card[data-status="info"]::before { background: var(--mcpui-accent, #4f6df5); }
         .card-header {
             padding: var(--mcpui-space-md, 12px) var(--mcpui-space-lg, 16px) var(--mcpui-space-sm, 8px);
             display: flex; align-items: center; justify-content: space-between;
@@ -61,6 +62,9 @@ export class McpuiCard extends LitElement {
         }
         .card-badge[data-status="muted"], .card-badge[data-status="no-data"] {
             color: var(--mcpui-text-muted); background: var(--mcpui-border-muted);
+        }
+        .card-badge[data-status="info"] {
+            color: var(--mcpui-accent, #4f6df5); background: rgba(79, 109, 245, 0.1);
         }
         .card-body {
             padding: 0 var(--mcpui-space-lg, 16px) var(--mcpui-space-md, 12px);
@@ -139,7 +143,7 @@ export class McpuiCard extends LitElement {
 
     render() {
         // Layer 3: Component-level validation — normalize status to valid values
-        const VALID_STATUSES = new Set(['success', 'warning', 'error', 'muted', 'healthy', 'failing', 'no-data']);
+        const VALID_STATUSES = new Set(['success', 'warning', 'error', 'muted', 'info', 'healthy', 'failing', 'no-data']);
         if (this.status && !VALID_STATUSES.has(this.status)) {
             this.status = 'muted';
         }
