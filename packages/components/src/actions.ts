@@ -18,7 +18,7 @@ export class McpuiActions extends LitElement {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
-            padding: 12px 0 4px;
+            padding: 4px 0;
         }
         .action-btn {
             display: inline-flex;
@@ -33,24 +33,15 @@ export class McpuiActions extends LitElement {
             font-family: inherit;
             line-height: 1;
         }
-        .action-btn[data-action="read"] {
+        .action-btn {
             background: var(--mcpui-surface, #fff);
             border: 1px solid var(--mcpui-border, #e5e7eb);
             color: var(--mcpui-text, #1f2937);
         }
-        .action-btn[data-action="read"]:hover {
+        .action-btn:hover {
             border-color: var(--mcpui-accent, #4f6df5);
             color: var(--mcpui-accent, #4f6df5);
             background: rgba(79, 109, 245, 0.04);
-        }
-        .action-btn[data-action="write"] {
-            background: var(--mcpui-surface, #fff);
-            border: 1px solid var(--mcpui-border-warning, #fef9c3);
-            color: var(--mcpui-text, #1f2937);
-        }
-        .action-btn[data-action="write"]:hover {
-            border-color: var(--mcpui-warning, #eab308);
-            background: rgba(234, 179, 8, 0.04);
         }
         .action-icon {
             font-size: 14px;
