@@ -1179,23 +1179,31 @@ function transformOutput(html) {
         }
     });
 
-    // Rule 1b: Sections containing tool cards should also use "info"
+    // Rule 1b: Sections containing info cards should also use "info"
     root.querySelectorAll('mcpui-section').forEach(section => {
-        const hasToolCards = section.querySelector('mcpui-card[item-id*="__"]');
-        if (hasToolCards) {
+        const hasInfoCards = section.querySelector('mcpui-card[status="info"]');
+        const status = section.getAttribute('status');
+        if (hasInfoCards || status === 'success') {
             section.setAttribute('status', 'info');
         }
     });
 
-    // Rule 1c: Stat-bar chips in tool listings should use "info" color
+    // Rule 1c: Stat-bar chips should use "info" when sibling content is informational
     root.querySelectorAll('mcpui-stat-bar').forEach(bar => {
-        // Check if sibling sections contain tool cards
         const parent = bar.parentElement;
-        if (parent?.querySelector('mcpui-card[item-id*="__"]')) {
+        const hasSections = parent?.querySelector('mcpui-section');
+        if (hasSections) {
             try {
                 const items = JSON.parse(bar.getAttribute('items') || '[]');
-                const updated = items.map(item => ({ ...item, color: 'info' }));
-                bar.setAttribute('items', JSON.stringify(updated));
+                const hasGreen = items.some(i => i.color === 'success' || i.color === 'healthy');
+                if (hasGreen) {
+                    const updated = items.map(item =>
+                        (item.color === 'success' || item.color === 'healthy')
+                            ? { ...item, color: 'info' }
+                            : item
+                    );
+                    bar.setAttribute('items', JSON.stringify(updated));
+                }
             } catch { /* ignore */ }
         }
     });
