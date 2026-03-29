@@ -105,7 +105,7 @@ app.use('/*', serveStatic({ root: resolve(demoRoot, 'public') }));
 async function start() {
     const port = parseInt(process.env.PORT || '3000', 10);
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    const modelName = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250514';
+    const modelName = process.env.ANTHROPIC_MODEL || 'sonnet';
     const llmBackend = (process.env.LLM_BACKEND || (apiKey ? 'api' : 'cli')) as 'api' | 'cli';
 
     if (llmBackend === 'api' && !apiKey) {
