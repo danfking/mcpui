@@ -172,11 +172,21 @@ export class McpuiForm extends LitElement {
         const input = this.shadowRoot?.querySelector(`[data-key="${field.key}"]`) as HTMLInputElement | null;
         const query = input?.value?.trim() || '';
 
+        // Gather all other field values as context for contextual lookups
+        const fields = this._getFields();
+        const context: Record<string, string> = {};
+        for (const f of fields) {
+            if (f.key === field.key) continue;
+            const el = this.shadowRoot?.querySelector(`[data-key="${f.key}"]`) as HTMLInputElement | null;
+            if (el?.value?.trim()) context[f.key] = el.value.trim();
+        }
+
         this.dispatchEvent(new CustomEvent('mcpui-form-lookup', {
             detail: {
                 fieldKey: field.key,
                 prompt: field.lookup.prompt,
                 query,
+                context,
                 toolId: this['tool-id'],
             },
             bubbles: true,
