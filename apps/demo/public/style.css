@@ -625,6 +625,24 @@ body {
     color: var(--mcpui-text-muted, #9ca3af);
     flex-shrink: 0;
 }
+.mcpui-node-delete {
+    background: none;
+    border: none;
+    color: var(--mcpui-text-muted, #9ca3af);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity var(--mcpui-transition-fast);
+    flex-shrink: 0;
+    line-height: 1;
+}
+.mcpui-node-header:hover .mcpui-node-delete { opacity: 1; }
+.mcpui-node-delete:hover {
+    color: var(--mcpui-error, #ef4444);
+    background: var(--mcpui-border-error, #fee2e2);
+}
 .mcpui-node-content {
     padding: 20px 16px 20px;
     display: flex;

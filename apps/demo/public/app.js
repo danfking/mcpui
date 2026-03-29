@@ -227,6 +227,7 @@ function createNodeEl(node) {
                 ${node.summary ? ' \u2022 ' + escapeHtml(node.summary) : ''}
             </span>
             <span class="mcpui-node-time">${formatTimeAgo(node.timestamp)}</span>
+            <button class="mcpui-node-delete" data-delete-node="${node.id}" title="Delete this step">\u00d7</button>
         </div>
         ${node._hasExplicitLabel ? `
         <div class="mcpui-node-prompt-bubble">
@@ -237,9 +238,16 @@ function createNodeEl(node) {
     `;
 
     const header = div.querySelector('.mcpui-node-header');
-    header.addEventListener('click', () => toggleNode(node.id));
+    header.addEventListener('click', (e) => {
+        if (e.target.closest('.mcpui-node-delete')) return;
+        toggleNode(node.id);
+    });
     header.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleNode(node.id); }
+    });
+    header.querySelector('.mcpui-node-delete')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteNode(node.id);
     });
 
     return div;
@@ -268,6 +276,48 @@ function scrollToNode(nodeId, highlight = true) {
         void el.offsetWidth;
         el.classList.add('mcpui-node-highlight');
     }
+    saveState();
+}
+
+function deleteNode(nodeId) {
+    const session = getActiveSession();
+    if (!session) return;
+
+    // Find the node index and count children below it
+    const idx = session.nodes.findIndex(n => n.id === nodeId);
+    if (idx === -1) return;
+
+    const deleteCount = session.nodes.length - idx;
+    const noun = deleteCount === 1 ? 'this step' : `this step and ${deleteCount - 1} step${deleteCount > 2 ? 's' : ''} below it`;
+
+    if (!confirm(`Delete ${noun}? This cannot be undone.`)) return;
+
+    // Remove this node and all children (everything from idx onward)
+    const removedIds = session.nodes.slice(idx).map(n => n.id);
+    session.nodes = session.nodes.slice(0, idx);
+
+    // Remove DOM elements
+    for (const id of removedIds) {
+        document.querySelector(`.mcpui-node[data-node-id="${id}"]`)?.remove();
+    }
+
+    // If all nodes deleted, show empty state
+    if (session.nodes.length === 0) {
+        const container = document.getElementById('dashboard-container');
+        if (container) {
+            container.innerHTML = getSuggestionSkeleton();
+            loadDynamicSuggestions(container);
+        }
+    } else {
+        // Expand the new last node
+        const lastNode = session.nodes[session.nodes.length - 1];
+        lastNode.collapsed = false;
+        const el = document.querySelector(`.mcpui-node[data-node-id="${lastNode.id}"]`);
+        if (el) el.dataset.collapsed = 'false';
+    }
+
+    session.updatedAt = Date.now();
+    renderSessionList();
     saveState();
 }
 
