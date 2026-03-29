@@ -737,17 +737,22 @@ body {
 .mcpui-node-header:hover .mcpui-node-maximize { opacity: 1; }
 .mcpui-node-maximize:hover { color: var(--mcpui-accent, #4f6df5); }
 .mcpui-node-maximized {
-    position: fixed;
-    top: 48px;
-    left: 260px;
-    right: 0;
-    bottom: 60px;
+    position: fixed !important;
+    top: 48px !important;
+    left: 260px !important;
+    right: 0 !important;
+    bottom: 60px !important;
+    width: calc(100vw - 260px) !important;
     z-index: 50;
     background: var(--mcpui-surface-alt, #f5f6f8);
     overflow-y: auto;
-    border-radius: 0;
+    border-radius: 0 !important;
     margin: 0 !important;
-    box-shadow: none;
+    box-shadow: none !important;
+    opacity: 1 !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    flex: none !important;
 }
 .mcpui-node-maximized .mcpui-node-header {
     position: sticky;
@@ -762,7 +767,7 @@ body {
     border-right: none;
 }
 @media (max-width: 768px) {
-    .mcpui-node-maximized { left: 0; }
+    .mcpui-node-maximized { left: 0 !important; width: 100vw !important; }
 }
 .mcpui-node-info {
     background: none;
