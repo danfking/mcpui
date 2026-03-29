@@ -261,6 +261,9 @@ function createNodeEl(node) {
             ${statsTooltip ? `<button class="mcpui-node-info" title="${escapeAttr(statsTooltip)}">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="8" y="12" text-anchor="middle" font-size="10" font-weight="600" fill="currentColor">i</text></svg>
             </button>` : ''}
+            <button class="mcpui-node-maximize" title="Maximize">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/></svg>
+            </button>
             <button class="mcpui-node-delete" data-delete-node="${node.id}" title="Delete this step">\u00d7</button>
         </div>
         <div class="mcpui-node-content"></div>
@@ -268,7 +271,7 @@ function createNodeEl(node) {
 
     const header = div.querySelector('.mcpui-node-header');
     header.addEventListener('click', (e) => {
-        if (e.target.closest('.mcpui-node-delete')) return;
+        if (e.target.closest('.mcpui-node-delete') || e.target.closest('.mcpui-node-maximize') || e.target.closest('.mcpui-node-info')) return;
         toggleNode(node.id);
     });
     header.addEventListener('keydown', (e) => {
@@ -277,6 +280,17 @@ function createNodeEl(node) {
     header.querySelector('.mcpui-node-delete')?.addEventListener('click', (e) => {
         e.stopPropagation();
         deleteNode(node.id);
+    });
+    header.querySelector('.mcpui-node-maximize')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isMaximized = div.classList.toggle('mcpui-node-maximized');
+        const btn = header.querySelector('.mcpui-node-maximize');
+        if (btn) {
+            btn.title = isMaximized ? 'Restore' : 'Maximize';
+            btn.innerHTML = isMaximized
+                ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1" width="11" height="11" rx="1"/><rect x="1" y="4" width="11" height="11" rx="1"/></svg>'
+                : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/></svg>';
+        }
     });
     return div;
 }

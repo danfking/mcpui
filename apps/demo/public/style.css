@@ -722,6 +722,48 @@ body {
     flex-shrink: 0;
     line-height: 1;
 }
+/* Maximize/restore */
+.mcpui-node-maximize {
+    background: none;
+    border: none;
+    color: var(--mcpui-text-muted, #9ca3af);
+    cursor: pointer;
+    padding: 0 4px;
+    opacity: 0;
+    transition: opacity var(--mcpui-transition-fast);
+    flex-shrink: 0;
+    line-height: 1;
+}
+.mcpui-node-header:hover .mcpui-node-maximize { opacity: 1; }
+.mcpui-node-maximize:hover { color: var(--mcpui-accent, #4f6df5); }
+.mcpui-node-maximized {
+    position: fixed;
+    top: 48px;
+    left: 260px;
+    right: 0;
+    bottom: 60px;
+    z-index: 50;
+    background: var(--mcpui-surface-alt, #f5f6f8);
+    overflow-y: auto;
+    border-radius: 0;
+    margin: 0 !important;
+    box-shadow: none;
+}
+.mcpui-node-maximized .mcpui-node-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-radius: 0;
+}
+.mcpui-node-maximized .mcpui-node-maximize { opacity: 1; }
+.mcpui-node-maximized .mcpui-node-content {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+}
+@media (max-width: 768px) {
+    .mcpui-node-maximized { left: 0; }
+}
 .mcpui-node-info {
     background: none;
     border: none;
