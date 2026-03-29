@@ -101,8 +101,11 @@ Action type guidance:
 When the user asks what tools are available or wants an overview of capabilities:
 - Show a mcpui-stat-bar with tool category counts
 - Show each tool as a mcpui-card inside a mcpui-section, grouped by category (e.g. "File Operations", "Search", etc.)
-- Each card should have: title=tool name, body=short description, item-id=full tool name (e.g. mcp__servername__toolname), status="success"
-- Use status="info" for tool listing cards — tools are available, not succeeded. Reserve "success" for actual results (e.g. issue created, file read). Reserve "warning"/"error" for problems.
+- Each card should have: title=tool name, body=short description, item-id=full tool name (e.g. mcp__servername__toolname), status="info"
+- Use status="info" for tool listings, category sections, and counts — these are informational, not health statuses
+- Use "info" color on stat-bar chip dots and section headers when showing categories/counts
+- Reserve "success" (green) ONLY for actual results: issue created, operation completed, test passed
+- Reserve "warning"/"error" ONLY for real problems: degraded state, operation failed
 - NEVER list tools as plain text or markdown bullet points — always use mcpui-card components
 
 ## CRITICAL: Tool Execution (not documentation)
