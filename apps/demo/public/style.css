@@ -681,27 +681,26 @@ body {
     min-width: min-content;
 }
 .mcpui-tree-connector {
-    width: 2px;
-    height: 12px;
-    background: var(--mcpui-border, #e5e7eb);
+    width: 1px;
+    height: 8px;
+    background: var(--mcpui-border, #d1d5db);
     margin: 0 auto;
 }
 .mcpui-tree-branches {
     display: flex;
     gap: 12px;
     position: relative;
-    padding-top: 16px;
+    padding-top: 12px;
 }
-/* Horizontal connector line between branches */
+/* Horizontal connector line — spans from first to last column center */
 .mcpui-tree-branches::before {
     content: '';
     position: absolute;
     top: 0;
-    /* Connect from first column center to last column center */
-    left: 25%;
-    right: 25%;
-    height: 2px;
-    background: var(--mcpui-border, #e5e7eb);
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--mcpui-border, #d1d5db);
 }
 .mcpui-tree-branch-col {
     min-width: 0;
@@ -711,15 +710,16 @@ body {
     position: relative;
     overflow: visible;
 }
-/* Vertical drop from horizontal line to branch */
+/* Vertical drop from horizontal line down to first node in branch */
 .mcpui-tree-branch-col::before {
     content: '';
     position: absolute;
-    top: -16px;
+    top: -12px;
     left: 50%;
-    width: 2px;
-    height: 16px;
-    background: var(--mcpui-border, #e5e7eb);
+    transform: translateX(-50%);
+    width: 1px;
+    height: 12px;
+    background: var(--mcpui-border, #d1d5db);
 }
 .mcpui-tree-branch-col:not(.active) {
     opacity: 0.5;
