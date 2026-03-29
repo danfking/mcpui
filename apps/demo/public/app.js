@@ -1,7 +1,6 @@
 /**
  * MCPUI Demo App — main orchestration.
- * Infinite scroll navigation: each response appends as a collapsible section.
- * Supports browser back/forward, sidebar linking, and localStorage persistence.
+ * Multi-session management with inline conversation and infinite scroll navigation.
  */
 
 // ── DOMPurify Config ──
@@ -20,53 +19,114 @@ const ICON_SEND = `<svg width="20" height="20" viewBox="0 0 20 20" fill="current
 const ICON_STOP = `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><rect x="4" y="4" width="12" height="12" rx="2"/></svg>`;
 
 // ── State ──
-let conversationId = null;
 let activeSource = null;
 let cancelGeneration = 0;
 let fastMode = false;
 
-// Node tree — each prompt/response pair is a node
-let nodes = [];
-let activeNodeId = null;
+// Multi-session state
+let sessions = [];
+let activeSessionId = null;
 
 function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+function getActiveSession() {
+    return sessions.find(s => s.id === activeSessionId);
+}
+
 // ── Persistence ──
 function saveState() {
     try {
-        const data = JSON.stringify({ conversationId, nodes });
+        const data = JSON.stringify({ activeSessionId, sessions });
         if (data.length > 4_000_000) {
-            // Prune oldest nodes if approaching localStorage limit
-            while (nodes.length > 2 && JSON.stringify(nodes).length > 3_500_000) {
-                nodes.shift();
+            // Prune nodes from oldest sessions
+            const sorted = [...sessions].sort((a, b) => a.updatedAt - b.updatedAt);
+            for (const s of sorted) {
+                if (JSON.stringify({ activeSessionId, sessions }).length < 3_500_000) break;
+                if (s.nodes.length > 2) s.nodes = s.nodes.slice(-2);
             }
         }
-        localStorage.setItem('mcpui:state', JSON.stringify({ conversationId, nodes }));
-    } catch { /* storage full — silently fail */ }
+        localStorage.setItem('mcpui:sessions', JSON.stringify({ activeSessionId, sessions }));
+    } catch { /* storage full */ }
 }
 
 function loadState() {
     try {
-        const raw = localStorage.getItem('mcpui:state');
-        if (!raw) return null;
-        return JSON.parse(raw);
+        // Try new multi-session format
+        const raw = localStorage.getItem('mcpui:sessions');
+        if (raw) return JSON.parse(raw);
+
+        // Migrate old single-session format
+        const oldRaw = localStorage.getItem('mcpui:state');
+        if (oldRaw) {
+            const old = JSON.parse(oldRaw);
+            if (old.nodes?.length > 0) {
+                const session = {
+                    id: generateId(),
+                    title: old.nodes[0]?.promptDisplay || 'Previous session',
+                    createdAt: old.nodes[0]?.timestamp || Date.now(),
+                    updatedAt: old.nodes[old.nodes.length - 1]?.timestamp || Date.now(),
+                    conversationId: old.conversationId,
+                    nodes: old.nodes,
+                };
+                localStorage.removeItem('mcpui:state');
+                return { activeSessionId: session.id, sessions: [session] };
+            }
+            localStorage.removeItem('mcpui:state');
+        }
+        return null;
     } catch { return null; }
 }
 
 function clearState() {
+    localStorage.removeItem('mcpui:sessions');
     localStorage.removeItem('mcpui:state');
 }
 
-// ── Summary Generation ──
+// ── Session CRUD ──
+function createSession() {
+    const session = {
+        id: generateId(),
+        title: 'New conversation',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        conversationId: null,
+        nodes: [],
+    };
+    sessions.unshift(session);
+    activeSessionId = session.id;
+    renderSessionList();
+    renderMainContent();
+    saveState();
+}
+
+function switchSession(sessionId) {
+    if (sessionId === activeSessionId) return;
+    activeSessionId = sessionId;
+    renderMainContent();
+    renderSessionList();
+    saveState();
+}
+
+function deleteSession(sessionId) {
+    sessions = sessions.filter(s => s.id !== sessionId);
+    if (activeSessionId === sessionId) {
+        activeSessionId = sessions[0]?.id || null;
+        if (!activeSessionId) createSession();
+        else { renderMainContent(); }
+    }
+    renderSessionList();
+    saveState();
+}
+
+// ── Summary & Helpers ──
 function generateSummary(contentEl) {
     const tagEls = contentEl.querySelectorAll(
         'mcpui-stat-bar, mcpui-table, mcpui-card, mcpui-chart, mcpui-metric, mcpui-section'
     );
     const tags = [...new Set([...tagEls].map(el => el.tagName.toLowerCase().replace('mcpui-', '')))];
 
-    // Try to extract key values from first stat-bar
     const statBar = contentEl.querySelector('mcpui-stat-bar');
     let keyValues = '';
     if (statBar) {
@@ -76,12 +136,10 @@ function generateSummary(contentEl) {
         } catch { /* ignore */ }
     }
 
-    // For text responses, use first 60 chars
     if (tags.length === 0) {
         const text = contentEl.textContent?.trim() || '';
         return { tags: ['text'], summary: text.substring(0, 60) + (text.length > 60 ? '...' : '') };
     }
-
     return { tags, summary: keyValues || tags.join(' + ') };
 }
 
@@ -95,7 +153,61 @@ function formatTimeAgo(timestamp) {
     return `${Math.floor(hours / 24)}d ago`;
 }
 
-// ── DOM Helpers ──
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ── Session List Rendering ──
+function renderSessionList() {
+    const listEl = document.getElementById('session-list');
+    if (!listEl) return;
+
+    // Group by time
+    const now = Date.now();
+    const dayMs = 86400000;
+    const todayStart = new Date().setHours(0, 0, 0, 0);
+    const groups = { today: [], yesterday: [], week: [], older: [] };
+
+    for (const s of sessions) {
+        const t = s.updatedAt || s.createdAt;
+        if (t >= todayStart) groups.today.push(s);
+        else if (t >= todayStart - dayMs) groups.yesterday.push(s);
+        else if (t >= todayStart - 7 * dayMs) groups.week.push(s);
+        else groups.older.push(s);
+    }
+
+    let html = '';
+    const renderGroup = (label, items) => {
+        if (items.length === 0) return;
+        html += `<div class="mcpui-session-group-label">${label}</div>`;
+        for (const s of items) {
+            const active = s.id === activeSessionId ? ' active' : '';
+            const stepCount = s.nodes?.length || 0;
+            html += `
+                <div class="mcpui-session-item${active}" data-session-id="${s.id}">
+                    <div class="mcpui-session-title">${escapeHtml(s.title)}</div>
+                    <div class="mcpui-session-meta">${stepCount} step${stepCount !== 1 ? 's' : ''} \u2022 ${formatTimeAgo(s.updatedAt || s.createdAt)}</div>
+                    <button class="mcpui-session-delete" data-delete-id="${s.id}" title="Delete">\u00d7</button>
+                </div>
+            `;
+        }
+    };
+
+    renderGroup('Today', groups.today);
+    renderGroup('Yesterday', groups.yesterday);
+    renderGroup('Previous 7 days', groups.week);
+    renderGroup('Older', groups.older);
+
+    if (sessions.length === 0) {
+        html = '<div style="padding: 16px; color: var(--mcpui-text-muted); font-size: 13px; text-align: center;">No sessions yet</div>';
+    }
+
+    listEl.innerHTML = html;
+}
+
+// ── Node DOM Creation ──
 function createNodeEl(node) {
     const div = document.createElement('div');
     div.className = 'mcpui-node';
@@ -108,18 +220,21 @@ function createNodeEl(node) {
 
     div.innerHTML = `
         <div class="mcpui-node-header" role="button" tabindex="0">
-            <span class="mcpui-node-chevron">▼</span>
+            <span class="mcpui-node-chevron">\u25bc</span>
             <span class="mcpui-node-prompt">${escapeHtml(node.promptDisplay || node.prompt)}</span>
             <span class="mcpui-node-summary">
                 <span class="mcpui-node-tags">${tagsHtml}</span>
-                ${node.summary ? ' • ' + escapeHtml(node.summary) : ''}
+                ${node.summary ? ' \u2022 ' + escapeHtml(node.summary) : ''}
             </span>
             <span class="mcpui-node-time">${formatTimeAgo(node.timestamp)}</span>
+        </div>
+        <div class="mcpui-node-prompt-bubble">
+            <div class="mcpui-prompt-avatar">You</div>
+            <div class="mcpui-prompt-text">${escapeHtml(node.prompt)}</div>
         </div>
         <div class="mcpui-node-content"></div>
     `;
 
-    // Click header to toggle collapse
     const header = div.querySelector('.mcpui-node-header');
     header.addEventListener('click', () => toggleNode(node.id));
     header.addEventListener('keydown', (e) => {
@@ -130,7 +245,9 @@ function createNodeEl(node) {
 }
 
 function toggleNode(nodeId) {
-    const node = nodes.find(n => n.id === nodeId);
+    const session = getActiveSession();
+    if (!session) return;
+    const node = session.nodes.find(n => n.id === nodeId);
     if (!node) return;
     node.collapsed = !node.collapsed;
     const el = document.querySelector(`.mcpui-node[data-node-id="${nodeId}"]`);
@@ -141,27 +258,22 @@ function toggleNode(nodeId) {
 function scrollToNode(nodeId, highlight = true) {
     const el = document.querySelector(`.mcpui-node[data-node-id="${nodeId}"]`);
     if (!el) return;
-
-    // Expand if collapsed
-    const node = nodes.find(n => n.id === nodeId);
-    if (node?.collapsed) {
-        node.collapsed = false;
-        el.dataset.collapsed = 'false';
-    }
-
+    const session = getActiveSession();
+    const node = session?.nodes.find(n => n.id === nodeId);
+    if (node?.collapsed) { node.collapsed = false; el.dataset.collapsed = 'false'; }
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
     if (highlight) {
         el.classList.remove('mcpui-node-highlight');
-        void el.offsetWidth; // force reflow
+        void el.offsetWidth;
         el.classList.add('mcpui-node-highlight');
     }
-
     saveState();
 }
 
 function collapseAllExcept(exceptNodeId) {
-    for (const node of nodes) {
+    const session = getActiveSession();
+    if (!session) return;
+    for (const node of session.nodes) {
         if (node.id !== exceptNodeId && !node.collapsed) {
             node.collapsed = true;
             const el = document.querySelector(`.mcpui-node[data-node-id="${node.id}"]`);
@@ -171,29 +283,60 @@ function collapseAllExcept(exceptNodeId) {
 }
 
 function updateNodeSummary(nodeId) {
-    const node = nodes.find(n => n.id === nodeId);
+    const session = getActiveSession();
+    if (!session) return;
+    const node = session.nodes.find(n => n.id === nodeId);
     if (!node) return;
-
     const el = document.querySelector(`.mcpui-node[data-node-id="${nodeId}"]`);
     if (!el) return;
-
     const contentEl = el.querySelector('.mcpui-node-content');
     const { tags, summary } = generateSummary(contentEl);
     node.tags = tags;
     node.summary = summary;
-
-    // Update header display
     const tagsHtml = tags.map(t => `<span class="mcpui-node-tag">${t}</span>`).join('');
     const summaryEl = el.querySelector('.mcpui-node-summary');
     if (summaryEl) {
-        summaryEl.innerHTML = `<span class="mcpui-node-tags">${tagsHtml}</span>${summary ? ' • ' + escapeHtml(summary) : ''}`;
+        summaryEl.innerHTML = `<span class="mcpui-node-tags">${tagsHtml}</span>${summary ? ' \u2022 ' + escapeHtml(summary) : ''}`;
     }
 }
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+// ── Main Content Rendering ──
+function renderMainContent() {
+    const container = document.getElementById('dashboard-container');
+    if (!container) return;
+    const session = getActiveSession();
+
+    if (!session || session.nodes.length === 0) {
+        container.innerHTML = getEmptyState();
+        return;
+    }
+
+    container.innerHTML = '';
+    for (let i = 0; i < session.nodes.length; i++) {
+        const node = session.nodes[i];
+        if (i < session.nodes.length - 1) node.collapsed = true;
+        else node.collapsed = false;
+
+        const nodeEl = createNodeEl(node);
+        container.appendChild(nodeEl);
+
+        if (node.response) {
+            const contentEl = nodeEl.querySelector('.mcpui-node-content');
+            if (node.type === 'components') {
+                const clean = DOMPurify.sanitize(extractHtmlContent(node.response), PURIFY_CONFIG);
+                const temp = document.createElement('template');
+                temp.innerHTML = clean;
+                contentEl.appendChild(temp.content);
+            } else {
+                contentEl.innerHTML = `<div class="mcpui-text-response">${renderMarkdown(node.response)}</div>`;
+            }
+        }
+    }
+
+    const lastNode = session.nodes[session.nodes.length - 1];
+    if (lastNode) {
+        setTimeout(() => scrollToNode(lastNode.id, false), 100);
+    }
 }
 
 // ── Progress Indicator ──
@@ -227,11 +370,8 @@ function getProgressHtml() {
 function updateProgress(contentEl, stage, detail) {
     const progressEl = contentEl.querySelector('.mcpui-progress');
     if (!progressEl) return;
-
     const stageIdx = PROGRESS_STAGES.indexOf(stage);
     if (stageIdx === -1) return;
-
-    // Update stages: done for previous, active for current, pending for future
     const stageEls = progressEl.querySelectorAll('.mcpui-progress-stage');
     stageEls.forEach((el, i) => {
         el.classList.remove('done', 'active', 'pending');
@@ -239,82 +379,18 @@ function updateProgress(contentEl, stage, detail) {
         else if (i === stageIdx) el.classList.add('active');
         else el.classList.add('pending');
     });
-
-    // Update label for active stage with detail
     if (detail) {
         const activeLabel = progressEl.querySelector(`.mcpui-progress-stage[data-stage="${stage}"] .mcpui-progress-label`);
         if (activeLabel) activeLabel.textContent = detail;
     }
-
-    // Update progress bar
     const fill = progressEl.querySelector('.mcpui-progress-fill');
-    if (fill) {
-        const pct = Math.min(95, ((stageIdx + 1) / PROGRESS_STAGES.length) * 100);
-        fill.style.width = `${pct}%`;
-    }
-}
-
-// ── Restore from persistence ──
-function restoreFromStorage(container) {
-    const state = loadState();
-    if (!state || !state.nodes || state.nodes.length === 0) return false;
-
-    conversationId = state.conversationId;
-    nodes = state.nodes;
-
-    // Render all nodes as collapsed sections, expand the last one
-    container.innerHTML = '';
-    for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i];
-        if (i < nodes.length - 1) node.collapsed = true;
-        else node.collapsed = false;
-
-        const nodeEl = createNodeEl(node);
-        container.appendChild(nodeEl);
-
-        // Re-render content from stored response
-        if (node.response) {
-            const contentEl = nodeEl.querySelector('.mcpui-node-content');
-            if (node.type === 'components') {
-                const clean = DOMPurify.sanitize(extractHtmlContent(node.response), PURIFY_CONFIG);
-                const temp = document.createElement('template');
-                temp.innerHTML = clean;
-                contentEl.appendChild(temp.content);
-            } else {
-                contentEl.innerHTML = `<div class="mcpui-text-response">${renderMarkdown(node.response)}</div>`;
-            }
-        }
-    }
-
-    // Restore chat sidebar messages
-    const messagesEl = document.getElementById('chat-messages');
-    if (messagesEl) {
-        messagesEl.innerHTML = '';
-        for (const node of nodes) {
-            addChatMessage('user', node.promptDisplay || node.prompt, false, node.id);
-            const assistantLabel = node.type === 'components' ? 'Dashboard view generated' : (node.summary || 'Response');
-            addChatMessage('assistant', assistantLabel, false, node.id);
-        }
-    }
-
-    // Scroll to last node
-    const lastNode = nodes[nodes.length - 1];
-    if (lastNode) {
-        activeNodeId = lastNode.id;
-        setTimeout(() => scrollToNode(lastNode.id, false), 100);
-    }
-
-    return true;
+    if (fill) fill.style.width = `${Math.min(95, ((stageIdx + 1) / PROGRESS_STAGES.length) * 100)}%`;
 }
 
 // ── Main ──
 document.addEventListener('DOMContentLoaded', () => {
     const promptInput = document.getElementById('prompt-input');
     const submitBtn = document.getElementById('btn-submit');
-    const toggleBtn = document.getElementById('btn-toggle-sidebar');
-    const newChatBtn = document.getElementById('btn-new-chat');
-    const sidebar = document.getElementById('sidebar');
-    const contentArea = document.getElementById('content-area');
     const container = document.getElementById('dashboard-container');
     const breadcrumb = document.getElementById('breadcrumb');
 
@@ -327,23 +403,50 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Try to restore from localStorage ──
-    const restored = restoreFromStorage(container);
-    if (restored) {
-        updateBreadcrumb();
+    // ── Session panel events ──
+    document.getElementById('btn-new-session')?.addEventListener('click', () => createSession());
+
+    document.getElementById('session-list')?.addEventListener('click', (e) => {
+        // Delete button
+        const deleteBtn = e.target.closest('.mcpui-session-delete');
+        if (deleteBtn) {
+            e.stopPropagation();
+            deleteSession(deleteBtn.dataset.deleteId);
+            return;
+        }
+        // Session item click
+        const item = e.target.closest('.mcpui-session-item');
+        if (item) switchSession(item.dataset.sessionId);
+    });
+
+    // Mobile toggle for session panel
+    document.getElementById('btn-toggle-sessions')?.addEventListener('click', () => {
+        document.getElementById('session-panel')?.classList.toggle('open');
+    });
+
+    // ── Restore from localStorage ──
+    const state = loadState();
+    if (state?.sessions?.length > 0) {
+        sessions = state.sessions;
+        activeSessionId = state.activeSessionId || sessions[0].id;
+        renderSessionList();
+        renderMainContent();
+    } else {
+        createSession();
     }
 
     function updateBreadcrumb() {
-        const trail = ['Dashboard'];
-        // Build trail from node prompts
-        for (const node of nodes) {
-            const label = node.promptDisplay || node.prompt;
+        const session = getActiveSession();
+        if (!session) { breadcrumb.textContent = 'Dashboard'; return; }
+        const trail = [session.title || 'Dashboard'];
+        const lastNode = session.nodes[session.nodes.length - 1];
+        if (lastNode) {
+            const label = lastNode.promptDisplay || lastNode.prompt;
             trail.push(label.length > 30 ? label.substring(0, 30) + '...' : label);
         }
-        // Show last 3 items
-        const visible = trail.length > 3 ? ['...', ...trail.slice(-2)] : trail;
-        breadcrumb.textContent = visible.join(' > ');
+        breadcrumb.textContent = trail.join(' > ');
     }
+    updateBreadcrumb();
 
     // ── Submit on Enter or button click ──
     promptInput.addEventListener('keydown', (e) => {
@@ -365,7 +468,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Auto-resize textarea
     promptInput.addEventListener('input', () => {
         promptInput.style.height = '';
         promptInput.style.height = Math.min(promptInput.scrollHeight, 150) + 'px';
@@ -378,31 +480,6 @@ document.addEventListener('DOMContentLoaded', () => {
             promptInput.value = btn.dataset.prompt;
             handleSubmit();
         }
-    });
-
-    // Sidebar toggle
-    toggleBtn.addEventListener('click', () => {
-        sidebar.classList.toggle('open');
-        contentArea.classList.toggle('sidebar-open');
-    });
-
-    // New conversation
-    newChatBtn.addEventListener('click', () => {
-        conversationId = null;
-        nodes = [];
-        activeNodeId = null;
-        clearState();
-        updateBreadcrumb();
-        container.innerHTML = getEmptyState();
-        document.getElementById('chat-messages').innerHTML = '';
-    });
-
-    // ── Sidebar message click → scroll to node ──
-    document.getElementById('chat-messages')?.addEventListener('click', (e) => {
-        const msg = e.target.closest('mcpui-message');
-        if (!msg) return;
-        const nodeId = msg.dataset.nodeId;
-        if (nodeId) scrollToNode(nodeId);
     });
 
     // ── Card drill-down ──
@@ -421,11 +498,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ── Browser history (back/forward) ──
+    // ── Browser history ──
     window.addEventListener('popstate', (e) => {
-        if (e.state?.nodeId) {
-            scrollToNode(e.state.nodeId);
-        }
+        if (e.state?.nodeId) scrollToNode(e.state.nodeId);
     });
 
     // ── Submit handler ──
@@ -435,7 +510,10 @@ document.addEventListener('DOMContentLoaded', () => {
         promptInput.value = '';
         promptInput.style.height = '';
 
-        // Remove empty state if present
+        let session = getActiveSession();
+        if (!session) { createSession(); session = getActiveSession(); }
+
+        // Remove empty state
         const emptyState = container.querySelector('.mcpui-empty-state');
         if (emptyState) emptyState.remove();
 
@@ -443,7 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const nodeId = generateId();
         const node = {
             id: nodeId,
-            parentId: activeNodeId,
+            parentId: session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null,
             prompt,
             promptDisplay: displayLabel || (prompt.length > 60 ? prompt.substring(0, 60) + '...' : prompt),
             response: '',
@@ -453,23 +531,22 @@ document.addEventListener('DOMContentLoaded', () => {
             timestamp: Date.now(),
             collapsed: false,
         };
-        nodes.push(node);
-        activeNodeId = nodeId;
+        session.nodes.push(node);
+        session.updatedAt = Date.now();
+
+        // Auto-title session from first prompt
+        if (session.nodes.length === 1) {
+            session.title = node.promptDisplay;
+            renderSessionList();
+        }
 
         // Auto-collapse previous nodes
         collapseAllExcept(nodeId);
 
-        // Create the section DOM element
         const nodeEl = createNodeEl(node);
         container.appendChild(nodeEl);
-
-        // Get the content area for this node
         const contentEl = nodeEl.querySelector('.mcpui-node-content');
-
-        // Show live progress indicator instead of static skeleton
         contentEl.innerHTML = getProgressHtml();
-
-        // Scroll to new node
         nodeEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
         submitBtn.classList.add('cancel');
@@ -479,14 +556,11 @@ document.addEventListener('DOMContentLoaded', () => {
         let streamingStarted = false;
         const containerStack = [];
 
-        addChatMessage('user', displayLabel || prompt, false, nodeId);
-        const streamingMsg = addChatMessage('assistant', 'Thinking...', true, nodeId);
-
-        // Push browser history
         history.pushState({ nodeId }, '');
 
         submitPrompt(
             prompt,
+            session.conversationId,
             // onChunk
             (chunk, fullText) => {
                 const trimmed = fullText.trim();
@@ -501,18 +575,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         appendStreamElement(contentEl, containerStack, elements[renderedCount]);
                         renderedCount++;
                     }
-                    updateChatMessage(streamingMsg, 'Building dashboard...');
                 } else {
                     contentEl.innerHTML = `<div class="mcpui-text-response mcpui-streaming">${renderMarkdown(trimmed)}</div>`;
-                    updateChatMessage(streamingMsg, trimmed.substring(0, 120));
                 }
             },
             // onDone
-            (fullText) => {
+            (fullText, newConversationId) => {
                 submitBtn.classList.remove('cancel');
                 submitBtn.innerHTML = ICON_SEND;
                 promptInput.disabled = false;
                 promptInput.focus();
+
+                session.conversationId = newConversationId;
 
                 const trimmed = fullText.trim();
                 node.response = trimmed;
@@ -527,15 +601,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         temp.innerHTML = clean;
                         contentEl.appendChild(temp.content);
                     }
-                    finalizeChatMessage(streamingMsg, 'Dashboard view generated');
                 } else {
                     contentEl.innerHTML = `<div class="mcpui-text-response">${renderMarkdown(trimmed)}</div>`;
-                    finalizeChatMessage(streamingMsg, trimmed.substring(0, 120));
                 }
 
-                // Generate summary and update header
                 updateNodeSummary(nodeId);
                 updateBreadcrumb();
+                renderSessionList();
                 saveState();
             },
             // onError
@@ -549,13 +621,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 node.summary = 'Error';
                 node.tags = ['error'];
                 updateNodeSummary(nodeId);
-                finalizeChatMessage(streamingMsg, `Error: ${error}`);
                 saveState();
             },
             // onProgress
             (stage, detail) => {
                 updateProgress(contentEl, stage, detail);
-                if (detail) updateChatMessage(streamingMsg, detail);
             }
         );
 
@@ -566,17 +636,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── SSE Streaming ──
 
-async function submitPrompt(prompt, onChunk, onDone, onError, onProgress) {
+async function submitPrompt(prompt, existingConversationId, onChunk, onDone, onError, onProgress) {
     try {
         const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, conversationId, model: fastMode ? 'haiku' : undefined }),
+            body: JSON.stringify({ prompt, conversationId: existingConversationId, model: fastMode ? 'haiku' : undefined }),
         });
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const data = await res.json();
-        conversationId = data.conversationId;
-        await streamResponse(data.streamUrl, onChunk, onDone, onError, onProgress);
+        const conversationId = data.conversationId;
+        await streamResponse(data.streamUrl, onChunk, (fullText) => onDone(fullText, conversationId), onError, onProgress);
     } catch (err) {
         onError(err.message);
     }
@@ -595,8 +665,7 @@ function streamResponse(streamUrl, onChunk, onDone, onError, onProgress) {
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'error') {
-                    source.close();
-                    activeSource = null;
+                    source.close(); activeSource = null;
                     onError(data.message || 'Unknown error');
                     resolve();
                 } else if (data.type === 'progress') {
@@ -605,81 +674,43 @@ function streamResponse(streamUrl, onChunk, onDone, onError, onProgress) {
                     fullText += data.text;
                     onChunk(data.text, fullText);
                 } else if (data.type === 'done') {
-                    source.close();
-                    activeSource = null;
+                    source.close(); activeSource = null;
                     onDone(fullText);
                     resolve();
                 }
-            } catch (e) {
-                console.error('SSE parse error:', e);
-            }
+            } catch (e) { console.error('SSE parse error:', e); }
         };
 
         source.onerror = () => {
-            source.close();
-            activeSource = null;
-            if (cancelGeneration > myGeneration) {
-                resolve();
-            } else if (fullText) {
-                onDone(fullText);
-                resolve();
-            } else {
-                onError('Connection lost');
-                resolve();
-            }
+            source.close(); activeSource = null;
+            if (cancelGeneration > myGeneration) { resolve(); }
+            else if (fullText) { onDone(fullText); resolve(); }
+            else { onError('Connection lost'); resolve(); }
         };
     });
 }
 
 // ── Stream Parser ──
 
-function containsMcpuiTags(text) {
-    return /<mcpui-[a-z]/.test(text);
-}
+function containsMcpuiTags(text) { return /<mcpui-[a-z]/.test(text); }
 
 function findStreamElements(text) {
     const elements = [];
     const cleaned = text.replace(/<use_mcp_tool[\s\S]*?<\/use_mcp_tool>/g, '');
     const re = /<(\/?)((mcpui-[a-z-]+)|div|h[1-6]|p|section|ul|ol|table)(\s[^>]*)?>/g;
     let m;
-
     while ((m = re.exec(cleaned)) !== null) {
         const isClose = m[1] === '/';
         const tagName = m[2];
-
-        if (isClose) {
-            if (CONTAINER_TAGS.has(tagName)) {
-                elements.push({ type: 'close', tagName, html: m[0] });
-            }
-            continue;
-        }
-
-        if (CONTAINER_TAGS.has(tagName)) {
-            elements.push({ type: 'open', tagName, html: m[0] });
-            continue;
-        }
-
-        if (cleaned[m.index + m[0].length - 2] === '/') {
-            elements.push({ type: 'leaf', tagName, html: m[0] });
-            continue;
-        }
-
+        if (isClose) { if (CONTAINER_TAGS.has(tagName)) elements.push({ type: 'close', tagName, html: m[0] }); continue; }
+        if (CONTAINER_TAGS.has(tagName)) { elements.push({ type: 'open', tagName, html: m[0] }); continue; }
+        if (cleaned[m.index + m[0].length - 2] === '/') { elements.push({ type: 'leaf', tagName, html: m[0] }); continue; }
         let depth = 1;
         const closeRe = new RegExp(`<(${tagName})(\\s[^>]*)?>|</${tagName}>`, 'g');
         closeRe.lastIndex = m.index + m[0].length;
         let cm;
         while ((cm = closeRe.exec(cleaned)) !== null) {
-            if (cm[0].startsWith('</')) {
-                depth--;
-                if (depth === 0) {
-                    elements.push({
-                        type: 'leaf', tagName,
-                        html: cleaned.substring(m.index, cm.index + cm[0].length),
-                    });
-                    re.lastIndex = cm.index + cm[0].length;
-                    break;
-                }
-            } else { depth++; }
+            if (cm[0].startsWith('</')) { depth--; if (depth === 0) { elements.push({ type: 'leaf', tagName, html: cleaned.substring(m.index, cm.index + cm[0].length) }); re.lastIndex = cm.index + cm[0].length; break; } } else { depth++; }
         }
         if (depth > 0) return elements;
     }
@@ -690,7 +721,6 @@ const SAFE_ATTRS = new Set(PURIFY_CONFIG.ADD_ATTR);
 
 function appendStreamElement(root, stack, element) {
     const parent = stack.length > 0 ? stack[stack.length - 1] : root;
-
     if (element.type === 'open') {
         const el = document.createElement(element.tagName);
         const attrRe = /([\w-]+)(?:=(?:"([^"]*)"|'([^']*)'|([\w-]+)))?/g;
@@ -700,8 +730,7 @@ function appendStreamElement(root, stack, element) {
             if (name === element.tagName || !SAFE_ATTRS.has(name)) continue;
             el.setAttribute(name, am[2] ?? am[3] ?? am[4] ?? '');
         }
-        parent.appendChild(el);
-        stack.push(el);
+        parent.appendChild(el); stack.push(el);
     } else if (element.type === 'close') {
         if (stack.length > 0) stack.pop();
     } else {
@@ -725,48 +754,12 @@ function extractHtmlContent(text) {
 }
 
 // ── Drill-Down ──
-
 function getDrillDownPrompt(title, status, itemId) {
     const idClause = itemId ? ` (id: ${itemId})` : '';
     return `Show me detailed information about "${title}"${idClause}. Include a summary card, any available data table, and relevant charts or metrics. Use ONLY mcpui-* web components — no markdown.`;
 }
 
-// ── Chat Sidebar ──
-
-function addChatMessage(role, content, isStreaming = false, nodeId = null) {
-    const messagesEl = document.getElementById('chat-messages');
-    if (!messagesEl) return null;
-    const msg = document.createElement('mcpui-message');
-    msg.setAttribute('role', role);
-    msg.setAttribute('content', content);
-    if (isStreaming) msg.setAttribute('streaming', '');
-    if (nodeId) msg.dataset.nodeId = nodeId;
-    msg.style.cursor = 'pointer';
-    messagesEl.appendChild(msg);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-
-    // Auto-open sidebar
-    const sidebar = document.getElementById('sidebar');
-    const contentArea = document.getElementById('content-area');
-    if (sidebar && !sidebar.classList.contains('open')) {
-        sidebar.classList.add('open');
-        contentArea.classList.add('sidebar-open');
-    }
-    return msg;
-}
-
-function updateChatMessage(el, content) {
-    if (el) el.setAttribute('content', content);
-}
-
-function finalizeChatMessage(el, content) {
-    if (!el) return;
-    if (content) el.setAttribute('content', content);
-    el.removeAttribute('streaming');
-}
-
 // ── Helpers ──
-
 function renderMarkdown(text) {
     if (typeof marked !== 'undefined') {
         const html = marked.parse(text);
@@ -793,24 +786,6 @@ function getEmptyState() {
                 <button class="mcpui-suggestion" data-prompt="Show me an overview of the data">Data overview</button>
                 <button class="mcpui-suggestion" data-prompt="List everything you can access">List resources</button>
             </div>
-        </div>
-    `;
-}
-
-function getSkeletonState() {
-    return `
-        <div class="mcpui-skeleton">
-            <div class="mcpui-skeleton-stat-bar">
-                <div class="mcpui-skeleton-pill"></div>
-                <div class="mcpui-skeleton-pill"></div>
-                <div class="mcpui-skeleton-pill"></div>
-            </div>
-            <div class="mcpui-skeleton-grid">
-                <div class="mcpui-skeleton-card"></div>
-                <div class="mcpui-skeleton-card"></div>
-                <div class="mcpui-skeleton-card"></div>
-            </div>
-            <div class="mcpui-progress-indicator">Generating response...</div>
         </div>
     `;
 }
