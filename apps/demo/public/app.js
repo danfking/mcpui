@@ -406,7 +406,7 @@ function renderMainContent() {
     const session = getActiveSession();
 
     if (!session || session.nodes.length === 0) {
-        container.innerHTML = getSuggestionSkeleton();
+        container.innerHTML = getEmptyState();
         loadDynamicSuggestions(container);
         return;
     }
