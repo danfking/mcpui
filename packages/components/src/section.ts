@@ -52,9 +52,10 @@ export class McpuiSection extends LitElement {
 
     private _getStatusColor(): string {
         const s = (this.status || '').toLowerCase();
-        if (s === 'error' || s === 'failing') return 'var(--mcpui-error, #ef4444)';
-        if (s === 'warning') return 'var(--mcpui-warning, #eab308)';
-        if (s === 'success' || s === 'healthy') return 'var(--mcpui-success, #22c55e)';
+        if (s === 'error' || s === 'failing') return 'var(--mcpui-error, #dc2626)';
+        if (s === 'warning') return 'var(--mcpui-warning, #ca8a04)';
+        if (s === 'success' || s === 'healthy') return 'var(--mcpui-success, #16a34a)';
+        if (s === 'info') return 'var(--mcpui-info, #6366f1)';
         return 'var(--mcpui-muted, #9ca3af)';
     }
 

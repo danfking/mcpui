@@ -42,9 +42,10 @@ export class McpuiStatBar extends LitElement {
 
     private _getColor(color?: string): string {
         const map: Record<string, string> = {
-            success: 'var(--mcpui-success, #22c55e)', healthy: 'var(--mcpui-success, #22c55e)',
-            warning: 'var(--mcpui-warning, #eab308)',
-            error: 'var(--mcpui-error, #ef4444)', failing: 'var(--mcpui-error, #ef4444)',
+            success: 'var(--mcpui-success, #16a34a)', healthy: 'var(--mcpui-success, #16a34a)',
+            warning: 'var(--mcpui-warning, #ca8a04)',
+            error: 'var(--mcpui-error, #dc2626)', failing: 'var(--mcpui-error, #dc2626)',
+            info: 'var(--mcpui-info, #6366f1)',
             muted: 'var(--mcpui-muted, #9ca3af)', 'no-data': 'var(--mcpui-muted, #9ca3af)',
         };
         return map[color || ''] || color || 'var(--mcpui-muted, #9ca3af)';

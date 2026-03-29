@@ -467,11 +467,7 @@ function renderTreeNode(container, session, node, activePath) {
         container.appendChild(connector);
         renderTreeNode(container, session, children[0], activePath);
     } else {
-        // Multiple children — branch horizontally
-        const connector = document.createElement('div');
-        connector.className = 'mcpui-tree-connector';
-        container.appendChild(connector);
-
+        // Multiple children — branch horizontally, each with its own connector
         const branchContainer = document.createElement('div');
         branchContainer.className = 'mcpui-tree-branches';
         container.appendChild(branchContainer);
@@ -481,6 +477,12 @@ function renderTreeNode(container, session, node, activePath) {
             branchCol.className = 'mcpui-tree-branch-col';
             if (activePath.has(child.id)) branchCol.classList.add('active');
             branchContainer.appendChild(branchCol);
+
+            // Each branch gets its own connector line
+            const branchConnector = document.createElement('div');
+            branchConnector.className = 'mcpui-tree-connector';
+            branchCol.appendChild(branchConnector);
+
             renderTreeNode(branchCol, session, child, activePath);
         }
     }

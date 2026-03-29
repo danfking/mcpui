@@ -12,16 +12,18 @@
     --mcpui-link: #3b82f6;
 
     /* ── Colors: Status ── */
-    --mcpui-success: #22c55e;
-    --mcpui-warning: #eab308;
-    --mcpui-error: #ef4444;
+    --mcpui-success: #16a34a;
+    --mcpui-warning: #ca8a04;
+    --mcpui-error: #dc2626;
     --mcpui-muted: #9ca3af;
+    --mcpui-info: #6366f1;
 
-    /* ── Colors: Status Borders (lighter) ── */
-    --mcpui-border-success: #dcfce7;
-    --mcpui-border-warning: #fef9c3;
-    --mcpui-border-error: #fee2e2;
+    /* ── Colors: Status Borders (lighter, for bars/indicators) ── */
+    --mcpui-border-success: #bbf7d0;
+    --mcpui-border-warning: #fef08a;
+    --mcpui-border-error: #fecaca;
     --mcpui-border-muted: #e5e7eb;
+    --mcpui-border-info: #c7d2fe;
 
     /* ── Colors: Neutral ── */
     --mcpui-text: #1f2937;
