@@ -683,7 +683,7 @@ body {
 .mcpui-tree-connector {
     width: 1px;
     height: 8px;
-    background: var(--mcpui-border, #d1d5db);
+    background: var(--mcpui-border, #e5e7eb);
     margin: 0 auto;
 }
 .mcpui-tree-branches {
