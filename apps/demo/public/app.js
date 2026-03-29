@@ -1155,11 +1155,31 @@ function transformOutput(html) {
     if (!root) return html;
 
     // Rule 1: Tool listing cards use "info" status (blue), not RAG colors
-    // RAG (success/warning/error) should only be used for actual state/results
     root.querySelectorAll('mcpui-card').forEach(card => {
         const itemId = card.getAttribute('item-id') || '';
         if (itemId.includes('__')) {
             card.setAttribute('status', 'info');
+        }
+    });
+
+    // Rule 1b: Sections containing tool cards should also use "info"
+    root.querySelectorAll('mcpui-section').forEach(section => {
+        const hasToolCards = section.querySelector('mcpui-card[item-id*="__"]');
+        if (hasToolCards) {
+            section.setAttribute('status', 'info');
+        }
+    });
+
+    // Rule 1c: Stat-bar chips in tool listings should use "info" color
+    root.querySelectorAll('mcpui-stat-bar').forEach(bar => {
+        // Check if sibling sections contain tool cards
+        const parent = bar.parentElement;
+        if (parent?.querySelector('mcpui-card[item-id*="__"]')) {
+            try {
+                const items = JSON.parse(bar.getAttribute('items') || '[]');
+                const updated = items.map(item => ({ ...item, color: 'info' }));
+                bar.setAttribute('items', JSON.stringify(updated));
+            } catch { /* ignore */ }
         }
     });
 
