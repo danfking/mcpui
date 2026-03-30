@@ -36,7 +36,7 @@ count_active() {
     [ -f "$lockfile" ] || continue
     local pid
     pid=$(cat "$lockfile" 2>/dev/null || echo "")
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    if [ -n "$pid" ] && [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
       count=$((count + 1))
     fi
   done
@@ -49,7 +49,7 @@ clean_stale_locks() {
     [ -f "$lockfile" ] || continue
     local pid
     pid=$(cat "$lockfile" 2>/dev/null || echo "")
-    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+    if [ -z "$pid" ] || ! [[ "$pid" =~ ^[0-9]+$ ]] || ! kill -0 "$pid" 2>/dev/null; then
       log "Cleaning stale lock: $lockfile (PID $pid dead)"
       rm -f "$lockfile"
     fi
@@ -63,7 +63,7 @@ acquire_lock() {
   if [ -f "$lockfile" ]; then
     local pid
     pid=$(cat "$lockfile" 2>/dev/null || echo "")
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    if [ -n "$pid" ] && [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
       return 1  # already locked by live process
     fi
     rm -f "$lockfile"  # stale
@@ -144,7 +144,9 @@ run_phase() {
   local timeout=${!timeout_var:-600}
 
   # Transition label immediately to prevent double-pickup
-  gh issue edit "$issue" --repo "$REPO" --remove-label "$from_label" --add-label "$to_label" || true
+  if [ "$from_label" != "$to_label" ]; then
+    gh issue edit "$issue" --repo "$REPO" --remove-label "$from_label" --add-label "$to_label" || true
+  fi
 
   # Read the prompt template
   local prompt_file="$PROMPTS_DIR/${phase}.md"
@@ -214,7 +216,7 @@ run_phase() {
   elif [ "$phase" = "review" ] || [ "$phase" = "ship" ]; then
     # Find existing worktree for this issue
     local worktree_dir
-    worktree_dir=$(git -C "$PROJECT_ROOT" worktree list --porcelain | grep -A1 "worktree.*/${issue}-" | head -1 | sed 's/worktree //' || true)
+    worktree_dir=$(git -C "$PROJECT_ROOT" worktree list --porcelain | grep "^worktree.*/${issue}-" | head -1 | sed 's/^worktree //' || true)
     if [ -n "$worktree_dir" ] && [ -d "$worktree_dir" ]; then
       work_dir="$worktree_dir"
       export WORKTREE_DIR="$worktree_dir"
@@ -252,12 +254,12 @@ process_issue() {
   local label=$2
 
   if ! acquire_lock "$issue"; then
-    return 0  # already being processed
+    return 1  # already being processed
   fi
 
   # Run in background subshell
   (
-    trap 'release_lock '"$issue" EXIT
+    trap "release_lock $issue" EXIT
 
     case "$label" in
       agent:queue)
@@ -334,13 +336,14 @@ while true; do
       # Skip if already locked
       if [ -f "$LOCKS_DIR/${issue}.lock" ]; then
         local_pid=$(cat "$LOCKS_DIR/${issue}.lock" 2>/dev/null || echo "")
-        if [ -n "$local_pid" ] && kill -0 "$local_pid" 2>/dev/null; then
+        if [ -n "$local_pid" ] && [[ "$local_pid" =~ ^[0-9]+$ ]] && kill -0 "$local_pid" 2>/dev/null; then
           continue
         fi
       fi
 
-      process_issue "$issue" "$label"
-      active=$((active + 1))
+      if process_issue "$issue" "$label"; then
+        active=$((active + 1))
+      fi
     done
   done
 
