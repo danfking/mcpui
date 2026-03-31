@@ -72,6 +72,7 @@ const _loadedSessionIds = new Set();
 async function saveState() {
     try {
         // Save session metadata (with nodeIds instead of full nodes)
+        // For unloaded sessions, preserve their existing _nodeIds to avoid orphaning nodes
         const sessionMeta = sessions.map(s => ({
             id: s.id,
             title: s.title,
@@ -79,7 +80,7 @@ async function saveState() {
             updatedAt: s.updatedAt,
             conversationId: s.conversationId,
             activeNodeId: s.activeNodeId,
-            nodeIds: s.nodes.map(n => n.id),
+            nodeIds: _loadedSessionIds.has(s.id) ? s.nodes.map(n => n.id) : (s._nodeIds || []),
         }));
         await set('sessions', { activeSessionId, sessions: sessionMeta }, sessionStore);
 
