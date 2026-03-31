@@ -8,6 +8,11 @@ dist/
 apps/demo/mcp-servers.json
 apps/demo/mcp-servers.local.json
 
+# Secrets / credentials
+*.pem
+*.key
+.npmrc
+
 # Editor / local
 *.code-workspace
 package-lock.json
