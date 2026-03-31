@@ -3,6 +3,12 @@
  * Multi-session management with inline conversation and infinite scroll navigation.
  */
 
+import { get, set, del, keys, createStore } from 'idb-keyval';
+
+// ── IndexedDB Stores ──
+const sessionStore = createStore('burnish-db', 'sessions');
+const nodeStore = createStore('burnish-db', 'nodes');
+
 // ── DOMPurify Config ──
 const PURIFY_CONFIG = {
     ADD_TAGS: ['burnish-card', 'burnish-stat-bar', 'burnish-table', 'burnish-chart',
@@ -58,53 +64,155 @@ function getActivePath(session) {
 // Track which node to branch from (set when user clicks "Branch" button)
 let branchFromNodeId = null;
 
-// ── Persistence ──
-function saveState() {
+// ── Persistence (IndexedDB via idb-keyval) ──
+
+// Track which sessions have had their nodes loaded from IndexedDB
+const _loadedSessionIds = new Set();
+
+async function saveState() {
     try {
-        const data = JSON.stringify({ activeSessionId, sessions });
-        if (data.length > 4_000_000) {
-            // Prune nodes from oldest sessions
-            const sorted = [...sessions].sort((a, b) => a.updatedAt - b.updatedAt);
-            for (const s of sorted) {
-                if (JSON.stringify({ activeSessionId, sessions }).length < 3_500_000) break;
-                if (s.nodes.length > 2) s.nodes = s.nodes.slice(-2);
+        // Save session metadata (with nodeIds instead of full nodes)
+        const sessionMeta = sessions.map(s => ({
+            id: s.id,
+            title: s.title,
+            createdAt: s.createdAt,
+            updatedAt: s.updatedAt,
+            conversationId: s.conversationId,
+            activeNodeId: s.activeNodeId,
+            nodeIds: s.nodes.map(n => n.id),
+        }));
+        await set('sessions', { activeSessionId, sessions: sessionMeta }, sessionStore);
+
+        // Save individual nodes for all loaded sessions
+        const nodePromises = [];
+        for (const s of sessions) {
+            if (!_loadedSessionIds.has(s.id)) continue;
+            for (const node of s.nodes) {
+                nodePromises.push(set(`node:${node.id}`, node, nodeStore));
             }
         }
-        localStorage.setItem('burnish:sessions', JSON.stringify({ activeSessionId, sessions }));
-    } catch { /* storage full */ }
+        await Promise.all(nodePromises);
+    } catch (e) {
+        console.error('Failed to save state:', e);
+    }
 }
 
-function loadState() {
+async function loadState() {
     try {
-        // Try new multi-session format
-        const raw = localStorage.getItem('burnish:sessions');
-        if (raw) return JSON.parse(raw);
+        // Try migration from localStorage first
+        await migrateFromLocalStorage();
 
-        // Migrate old single-session format
+        const data = await get('sessions', sessionStore);
+        if (!data?.sessions?.length) return null;
+
+        // Load nodes for the active session only (lazy-load others on switch)
+        const activeId = data.activeSessionId || data.sessions[0].id;
+        const fullSessions = [];
+        for (const meta of data.sessions) {
+            const session = {
+                id: meta.id,
+                title: meta.title,
+                createdAt: meta.createdAt,
+                updatedAt: meta.updatedAt,
+                conversationId: meta.conversationId,
+                activeNodeId: meta.activeNodeId,
+                nodes: [],
+            };
+
+            if (meta.id === activeId) {
+                await loadSessionNodes(session, meta.nodeIds || []);
+                _loadedSessionIds.add(meta.id);
+            } else {
+                // Store nodeIds for lazy loading later
+                session._nodeIds = meta.nodeIds || [];
+            }
+
+            fullSessions.push(session);
+        }
+
+        return { activeSessionId: activeId, sessions: fullSessions };
+    } catch (e) {
+        console.error('Failed to load state:', e);
+        return null;
+    }
+}
+
+async function loadSessionNodes(session, nodeIds) {
+    if (!nodeIds || nodeIds.length === 0) return;
+    const nodes = await Promise.all(
+        nodeIds.map(id => get(`node:${id}`, nodeStore))
+    );
+    session.nodes = nodes.filter(Boolean);
+}
+
+async function clearState() {
+    const allKeys = await keys(nodeStore);
+    await Promise.all(allKeys.map(k => del(k, nodeStore)));
+    await del('sessions', sessionStore);
+}
+
+async function migrateFromLocalStorage() {
+    try {
+        // Check if already migrated (IndexedDB has data)
+        const existing = await get('sessions', sessionStore);
+        if (existing) return;
+
+        // Try new multi-session format from localStorage
+        const raw = localStorage.getItem('burnish:sessions');
+        if (raw) {
+            const data = JSON.parse(raw);
+            if (data?.sessions?.length > 0) {
+                // Save session metadata
+                const sessionMeta = data.sessions.map(s => ({
+                    id: s.id,
+                    title: s.title,
+                    createdAt: s.createdAt,
+                    updatedAt: s.updatedAt,
+                    conversationId: s.conversationId,
+                    activeNodeId: s.activeNodeId,
+                    nodeIds: (s.nodes || []).map(n => n.id),
+                }));
+                await set('sessions', { activeSessionId: data.activeSessionId, sessions: sessionMeta }, sessionStore);
+
+                // Save individual nodes
+                const nodePromises = [];
+                for (const s of data.sessions) {
+                    for (const node of (s.nodes || [])) {
+                        nodePromises.push(set(`node:${node.id}`, node, nodeStore));
+                    }
+                }
+                await Promise.all(nodePromises);
+
+                localStorage.removeItem('burnish:sessions');
+                return;
+            }
+        }
+
+        // Try old single-session format
         const oldRaw = localStorage.getItem('burnish:state');
         if (oldRaw) {
             const old = JSON.parse(oldRaw);
             if (old.nodes?.length > 0) {
-                const session = {
-                    id: generateId(),
+                const sessionId = generateId();
+                const sessionMeta = [{
+                    id: sessionId,
                     title: old.nodes[0]?.promptDisplay || 'Previous session',
                     createdAt: old.nodes[0]?.timestamp || Date.now(),
                     updatedAt: old.nodes[old.nodes.length - 1]?.timestamp || Date.now(),
                     conversationId: old.conversationId,
-                    nodes: old.nodes,
-                };
-                localStorage.removeItem('burnish:state');
-                return { activeSessionId: session.id, sessions: [session] };
+                    activeNodeId: old.nodes[old.nodes.length - 1]?.id,
+                    nodeIds: old.nodes.map(n => n.id),
+                }];
+                await set('sessions', { activeSessionId: sessionId, sessions: sessionMeta }, sessionStore);
+
+                const nodePromises = old.nodes.map(n => set(`node:${n.id}`, n, nodeStore));
+                await Promise.all(nodePromises);
             }
             localStorage.removeItem('burnish:state');
         }
-        return null;
-    } catch { return null; }
-}
-
-function clearState() {
-    localStorage.removeItem('burnish:sessions');
-    localStorage.removeItem('burnish:state');
+    } catch (e) {
+        console.error('Migration from localStorage failed:', e);
+    }
 }
 
 // ── Session CRUD ──
@@ -119,31 +227,51 @@ function createSession() {
     };
     sessions.unshift(session);
     activeSessionId = session.id;
+    _loadedSessionIds.add(session.id);
     renderSessionList();
     renderMainContent();
     saveState();
 }
 
-function switchSession(sessionId) {
+async function switchSession(sessionId) {
     if (sessionId === activeSessionId) return;
     activeSessionId = sessionId;
+
+    // Lazy-load nodes if not yet loaded
+    const session = getActiveSession();
+    if (session && !_loadedSessionIds.has(session.id) && session._nodeIds) {
+        await loadSessionNodes(session, session._nodeIds);
+        delete session._nodeIds;
+        _loadedSessionIds.add(session.id);
+    }
+
     renderMainContent();
     renderSessionList();
     saveState();
 }
 
-function deleteSession(sessionId) {
+async function deleteSession(sessionId) {
     const session = sessions.find(s => s.id === sessionId);
     const name = session?.title || 'this session';
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
 
+    // Collect node IDs to delete from IndexedDB
+    const nodeIds = session?.nodes?.map(n => n.id) || session?._nodeIds || [];
+
     sessions = sessions.filter(s => s.id !== sessionId);
+    _loadedSessionIds.delete(sessionId);
+
     if (activeSessionId === sessionId) {
         activeSessionId = sessions[0]?.id || null;
         if (!activeSessionId) createSession();
         else { renderMainContent(); }
     }
     renderSessionList();
+
+    // Delete orphaned nodes from IndexedDB
+    if (nodeIds.length > 0) {
+        await Promise.all(nodeIds.map(id => del(`node:${id}`, nodeStore)));
+    }
     saveState();
 }
 
@@ -211,7 +339,7 @@ function renderSessionList() {
         html += `<div class="burnish-session-group-label">${label}</div>`;
         for (const s of items) {
             const active = s.id === activeSessionId ? ' active' : '';
-            const stepCount = s.nodes?.length || 0;
+            const stepCount = s.nodes?.length || s._nodeIds?.length || 0;
             html += `
                 <div class="burnish-session-item${active}" data-session-id="${s.id}">
                     <div class="burnish-session-title">${escapeHtml(s.title)}</div>
@@ -372,6 +500,9 @@ function deleteNode(nodeId) {
     session.updatedAt = Date.now();
     renderMainContent();
     renderSessionList();
+
+    // Remove deleted nodes from IndexedDB
+    Promise.all([...removeIds].map(id => del(`node:${id}`, nodeStore))).catch(() => {});
     saveState();
 }
 
@@ -583,7 +714,7 @@ function updateProgress(contentEl, stage, detail) {
 }
 
 // ── Main ──
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const promptInput = document.getElementById('prompt-input');
     const submitBtn = document.getElementById('btn-submit');
     const container = document.getElementById('dashboard-container');
@@ -638,8 +769,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeServerModal(); });
 
-    // ── Restore from localStorage ──
-    const state = loadState();
+    // ── Restore from IndexedDB ──
+    const state = await loadState();
     if (state?.sessions?.length > 0) {
         sessions = state.sessions;
         activeSessionId = state.activeSessionId || sessions[0].id;
