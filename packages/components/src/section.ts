@@ -23,6 +23,7 @@ export class BurnishSection extends LitElement {
         :host([collapsed]) .chevron { transform: rotate(-90deg); }
         .status-dot {
             width: 12px; height: 12px; border-radius: var(--burnish-radius-round, 50%); flex-shrink: 0;
+            transition: background 0.3s ease;
         }
         .label { font-size: var(--burnish-font-size-lg, 16px); font-weight: 600; color: var(--burnish-text); }
         .label[data-status="error"], .label[data-status="failing"] { color: var(--burnish-error); }
