@@ -550,14 +550,13 @@ async function regenerateNode(nodeId) {
             node.type = containsBurnishTags(trimmed) ? 'components' : 'text';
 
             if (containsBurnishTags(trimmed)) {
-                const totalElements = findStreamElements(trimmed).length;
-                if (!(streamingStarted && renderedCount > 0 && renderedCount >= totalElements)) {
-                    contentEl.innerHTML = '';
-                    const clean = transformOutput(DOMPurify.sanitize(extractHtmlContent(trimmed), PURIFY_CONFIG));
-                    const temp = document.createElement('template');
-                    temp.innerHTML = clean;
-                    contentEl.appendChild(temp.content);
-                }
+                // Always apply transformOutput on completion to ensure
+                // color normalization rules run (streaming bypasses them)
+                contentEl.innerHTML = '';
+                const clean = transformOutput(DOMPurify.sanitize(extractHtmlContent(trimmed), PURIFY_CONFIG));
+                const temp = document.createElement('template');
+                temp.innerHTML = clean;
+                contentEl.appendChild(temp.content);
             } else {
                 contentEl.innerHTML = `<div class="burnish-text-response">${renderMarkdown(trimmed)}</div>`;
             }
@@ -1412,14 +1411,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 node.type = containsBurnishTags(trimmed) ? 'components' : 'text';
 
                 if (containsBurnishTags(trimmed)) {
-                    const totalElements = findStreamElements(trimmed).length;
-                    if (!(streamingStarted && renderedCount > 0 && renderedCount >= totalElements)) {
-                        contentEl.innerHTML = '';
-                        const clean = transformOutput(DOMPurify.sanitize(extractHtmlContent(trimmed), PURIFY_CONFIG));
-                        const temp = document.createElement('template');
-                        temp.innerHTML = clean;
-                        contentEl.appendChild(temp.content);
-                    }
+                    // Always apply transformOutput on completion to ensure
+                    // color normalization rules run (streaming bypasses them)
+                    contentEl.innerHTML = '';
+                    const clean = transformOutput(DOMPurify.sanitize(extractHtmlContent(trimmed), PURIFY_CONFIG));
+                    const temp = document.createElement('template');
+                    temp.innerHTML = clean;
+                    contentEl.appendChild(temp.content);
                 } else {
                     // Fallback: if the LLM returned plain text but this was a tool
                     // drill-down with required params, auto-generate a form from the schema
@@ -1692,6 +1690,15 @@ function transformOutput(html) {
     });
 
     // Rule 1d: Propagate stat-bar pill colors to matching section dots
+    const statusColorMap = {
+        success: 'var(--burnish-success, #16a34a)',
+        healthy: 'var(--burnish-success, #16a34a)',
+        warning: 'var(--burnish-warning, #ca8a04)',
+        error: 'var(--burnish-error, #dc2626)',
+        failing: 'var(--burnish-error, #dc2626)',
+        info: 'var(--burnish-info, #6366f1)',
+        muted: 'var(--burnish-muted, #9ca3af)',
+    };
     root.querySelectorAll('burnish-stat-bar').forEach(bar => {
         try {
             const items = JSON.parse(bar.getAttribute('items') || '[]');
@@ -1701,23 +1708,15 @@ function transformOutput(html) {
             for (const section of sections) {
                 const sectionLabel = (section.getAttribute('label') || '').toLowerCase();
                 if (!sectionLabel) continue;
-                // Match: stat-bar item label is a substring of section label or vice versa
+                const sectionWords = new Set(sectionLabel.split(/\s+/));
+                // Match: any non-stopword from stat-bar item label appears in section label
+                const stopwords = new Set(['operations', 'items', 'total', 'all', 'other', 'the', 'and', 'or']);
                 const match = items.find(item => {
-                    const itemLabel = (item.label || '').toLowerCase();
-                    return itemLabel && (sectionLabel.includes(itemLabel) || itemLabel.includes(sectionLabel));
+                    const itemWords = (item.label || '').toLowerCase().split(/\s+/);
+                    return itemWords.some(w => w && !stopwords.has(w) && sectionWords.has(w));
                 });
                 if (match) {
-                    // Resolve the color — could be a named status or a CSS color
-                    const colorMap = {
-                        success: 'var(--burnish-success, #16a34a)',
-                        healthy: 'var(--burnish-success, #16a34a)',
-                        warning: 'var(--burnish-warning, #ca8a04)',
-                        error: 'var(--burnish-error, #dc2626)',
-                        failing: 'var(--burnish-error, #dc2626)',
-                        info: 'var(--burnish-info, #6366f1)',
-                        muted: 'var(--burnish-muted, #9ca3af)',
-                    };
-                    const resolvedColor = colorMap[(match.color || '').toLowerCase()] || match.color || '';
+                    const resolvedColor = statusColorMap[(match.color || '').toLowerCase()] || match.color || '';
                     if (resolvedColor) {
                         section.setAttribute('color', resolvedColor);
                     }
