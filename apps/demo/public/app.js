@@ -150,6 +150,7 @@ async function clearState() {
     const allKeys = await keys(nodeStore);
     await Promise.all(allKeys.map(k => del(k, nodeStore)));
     await del('sessions', sessionStore);
+    _loadedSessionIds.clear();
 }
 
 async function migrateFromLocalStorage() {
@@ -257,7 +258,13 @@ async function deleteSession(sessionId) {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
 
     // Collect node IDs to delete from IndexedDB
-    const nodeIds = session?.nodes?.map(n => n.id) || session?._nodeIds || [];
+    let nodeIds = session?.nodes?.length ? session.nodes.map(n => n.id) : (session?._nodeIds || []);
+    // Fallback: read from IndexedDB metadata if session wasn't loaded
+    if (nodeIds.length === 0 && session) {
+        const meta = await get('sessions', sessionStore);
+        const saved = meta?.sessions?.find(s => s.id === sessionId);
+        if (saved?.nodeIds?.length) nodeIds = saved.nodeIds;
+    }
 
     sessions = sessions.filter(s => s.id !== sessionId);
     _loadedSessionIds.delete(sessionId);
