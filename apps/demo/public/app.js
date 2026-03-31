@@ -34,6 +34,8 @@ const ICON_REFRESH = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none
 let activeSource = null;
 let cancelGeneration = 0;
 let fastMode = localStorage.getItem('burnish:fastMode') === 'true';
+let searchQuery = '';
+let searchDebounceTimer = null;
 
 // Multi-session state
 let sessions = [];
@@ -252,6 +254,9 @@ async function createSession() {
 
 async function switchSession(sessionId) {
     if (sessionId === activeSessionId) return;
+    searchQuery = '';
+    const searchInput = document.getElementById('session-search');
+    if (searchInput) searchInput.value = '';
     activeSessionId = sessionId;
 
     // Lazy-load nodes if not yet loaded
@@ -352,6 +357,41 @@ function updateBreadcrumb() {
 }
 
 // ── Session List Rendering ──
+function sessionMatchesSearch(session, query) {
+    const q = query.toLowerCase();
+    if ((session.title || '').toLowerCase().includes(q)) return true;
+    if (session.nodes) {
+        for (const node of session.nodes) {
+            if ((node.prompt || '').toLowerCase().includes(q)) return true;
+            if ((node.response || '').toLowerCase().includes(q)) return true;
+        }
+    }
+    return false;
+}
+
+function getSearchSnippet(session, query) {
+    const q = query.toLowerCase();
+    if ((session.title || '').toLowerCase().includes(q)) return '';
+    if (session.nodes) {
+        for (const node of session.nodes) {
+            for (const text of [node.prompt, node.response]) {
+                if (!text) continue;
+                const idx = text.toLowerCase().indexOf(q);
+                if (idx === -1) continue;
+                const start = Math.max(0, idx - 30);
+                const end = Math.min(text.length, idx + query.length + 30);
+                const prefix = start > 0 ? '...' : '';
+                const suffix = end < text.length ? '...' : '';
+                const raw = text.slice(start, end).replace(/<[^>]+>/g, '');
+                const escaped = escapeHtml(raw);
+                const re = new RegExp(`(${escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                return prefix + escaped.replace(re, '<mark>$1</mark>') + suffix;
+            }
+        }
+    }
+    return '';
+}
+
 function renderSessionList() {
     const listEl = document.getElementById('session-list');
     if (!listEl) return;
@@ -362,7 +402,11 @@ function renderSessionList() {
     const todayStart = new Date().setHours(0, 0, 0, 0);
     const groups = { today: [], yesterday: [], week: [], older: [] };
 
-    for (const s of sessions) {
+    const filteredSessions = searchQuery
+        ? sessions.filter(s => sessionMatchesSearch(s, searchQuery))
+        : sessions;
+
+    for (const s of filteredSessions) {
         const t = s.updatedAt || s.createdAt;
         if (t >= todayStart) groups.today.push(s);
         else if (t >= todayStart - dayMs) groups.yesterday.push(s);
@@ -377,10 +421,12 @@ function renderSessionList() {
         for (const s of items) {
             const active = s.id === activeSessionId ? ' active' : '';
             const stepCount = s.nodes?.length || s._nodeIds?.length || 0;
+            const matchSnippet = searchQuery ? getSearchSnippet(s, searchQuery) : '';
             html += `
                 <div class="burnish-session-item${active}" data-session-id="${s.id}">
                     <div class="burnish-session-title">${escapeHtml(s.title)}</div>
                     <div class="burnish-session-meta">${stepCount} step${stepCount !== 1 ? 's' : ''} \u2022 ${formatTimeAgo(s.updatedAt || s.createdAt)}</div>
+                    ${matchSnippet ? `<div class="burnish-session-match">${matchSnippet}</div>` : ''}
                     <button class="burnish-session-delete" data-delete-id="${s.id}" title="Delete">\u00d7</button>
                 </div>
             `;
@@ -392,7 +438,9 @@ function renderSessionList() {
     renderGroup('Previous 7 days', groups.week);
     renderGroup('Older', groups.older);
 
-    if (sessions.length === 0) {
+    if (filteredSessions.length === 0 && searchQuery) {
+        html = '<div style="padding: 16px; color: var(--burnish-text-muted); font-size: 13px; text-align: center;">No matching sessions</div>';
+    } else if (sessions.length === 0) {
         html = '<div style="padding: 16px; color: var(--burnish-text-muted); font-size: 13px; text-align: center;">No sessions yet</div>';
     }
 
@@ -1038,6 +1086,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Session panel events ──
     document.getElementById('btn-new-session')?.addEventListener('click', () => createSession());
+
+    const searchInput = document.getElementById('session-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => {
+                searchQuery = searchInput.value.trim();
+                renderSessionList();
+            }, 200);
+        });
+    }
 
     document.getElementById('session-list')?.addEventListener('click', (e) => {
         // Delete button
