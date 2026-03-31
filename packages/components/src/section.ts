@@ -6,6 +6,7 @@ export class BurnishSection extends LitElement {
         count: { type: Number },
         status: { type: String },
         collapsed: { type: Boolean, reflect: true },
+        color: { type: String },
     };
 
     static styles = css`
@@ -42,6 +43,7 @@ export class BurnishSection extends LitElement {
     declare count: number;
     declare status: string;
     declare collapsed: boolean;
+    declare color: string;
 
     constructor() {
         super();
@@ -66,7 +68,7 @@ export class BurnishSection extends LitElement {
                 <svg class="chevron" viewBox="0 0 16 16" fill="none">
                     <path d="M5 3l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                <span class="status-dot" style="background:${this._getStatusColor()}"></span>
+                <span class="status-dot" style="background:${this.color || this._getStatusColor()}"></span>
                 <span class="label" data-status="${this.status || ''}">${this.label}</span>
                 ${countText ? html`<span class="count">${countText}</span>` : ''}
             </div>

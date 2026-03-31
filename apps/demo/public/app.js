@@ -19,7 +19,7 @@ const PURIFY_CONFIG = {
     ADD_ATTR: ['items', 'title', 'status', 'body', 'meta', 'columns', 'rows',
                'status-field', 'type', 'config', 'role', 'content', 'class',
                'label', 'count', 'collapsed', 'item-id', 'value', 'unit', 'trend',
-               'streaming', 'tool-id', 'fields', 'actions'],
+               'streaming', 'tool-id', 'fields', 'actions', 'color'],
 };
 
 const CONTAINER_TAGS = new Set(['burnish-section']);
@@ -335,6 +335,20 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function updateBreadcrumb() {
+    const breadcrumb = document.getElementById('breadcrumb');
+    if (!breadcrumb) return;
+    const session = getActiveSession();
+    if (!session) { breadcrumb.textContent = 'Dashboard'; return; }
+    const trail = [session.title || 'Dashboard'];
+    const lastNode = session.nodes[session.nodes.length - 1];
+    if (lastNode) {
+        const label = lastNode.promptDisplay || lastNode.prompt;
+        trail.push(label.length > 30 ? label.substring(0, 30) + '...' : label);
+    }
+    breadcrumb.textContent = trail.join(' > ');
 }
 
 // ── Session List Rendering ──
@@ -1072,17 +1086,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         await createSession();
     }
 
-    function updateBreadcrumb() {
-        const session = getActiveSession();
-        if (!session) { breadcrumb.textContent = 'Dashboard'; return; }
-        const trail = [session.title || 'Dashboard'];
-        const lastNode = session.nodes[session.nodes.length - 1];
-        if (lastNode) {
-            const label = lastNode.promptDisplay || lastNode.prompt;
-            trail.push(label.length > 30 ? label.substring(0, 30) + '...' : label);
-        }
-        breadcrumb.textContent = trail.join(' > ');
-    }
     updateBreadcrumb();
 
     // ── Submit on Enter or button click ──
@@ -1686,6 +1689,41 @@ function transformOutput(html) {
                 }
             } catch { /* ignore */ }
         }
+    });
+
+    // Rule 1d: Propagate stat-bar pill colors to matching section dots
+    root.querySelectorAll('burnish-stat-bar').forEach(bar => {
+        try {
+            const items = JSON.parse(bar.getAttribute('items') || '[]');
+            const parent = bar.parentElement;
+            if (!parent) return;
+            const sections = parent.querySelectorAll('burnish-section');
+            for (const section of sections) {
+                const sectionLabel = (section.getAttribute('label') || '').toLowerCase();
+                if (!sectionLabel) continue;
+                // Match: stat-bar item label is a substring of section label or vice versa
+                const match = items.find(item => {
+                    const itemLabel = (item.label || '').toLowerCase();
+                    return itemLabel && (sectionLabel.includes(itemLabel) || itemLabel.includes(sectionLabel));
+                });
+                if (match) {
+                    // Resolve the color — could be a named status or a CSS color
+                    const colorMap = {
+                        success: 'var(--burnish-success, #16a34a)',
+                        healthy: 'var(--burnish-success, #16a34a)',
+                        warning: 'var(--burnish-warning, #ca8a04)',
+                        error: 'var(--burnish-error, #dc2626)',
+                        failing: 'var(--burnish-error, #dc2626)',
+                        info: 'var(--burnish-info, #6366f1)',
+                        muted: 'var(--burnish-muted, #9ca3af)',
+                    };
+                    const resolvedColor = colorMap[(match.color || '').toLowerCase()] || match.color || '';
+                    if (resolvedColor) {
+                        section.setAttribute('color', resolvedColor);
+                    }
+                }
+            }
+        } catch { /* ignore */ }
     });
 
     // Rule 2: Sanitize lookup prompts — strip any specific tool/server name references
