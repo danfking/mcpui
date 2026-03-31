@@ -27,7 +27,7 @@ const CONTAINER_TAGS = new Set(['burnish-section']);
 const ICON_SEND = `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10l7-7v4h9v6H9v4z" transform="rotate(-90 10 10)"/></svg>`;
 const ICON_STOP = `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><rect x="4" y="4" width="12" height="12" rx="2"/></svg>`;
 const ICON_FOCUS = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4,1 1,1 1,4"/><polyline points="12,1 15,1 15,4"/><polyline points="4,15 1,15 1,12"/><polyline points="12,15 15,15 15,12"/></svg>`;
-const ICON_RESTORE = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="1,4 4,1 7,4"/><line x1="4" y1="1" x2="4" y2="10"/><polyline points="9,12 12,15 15,12"/><line x1="12" y1="6" x2="12" y2="15"/></svg>`;
+const ICON_RESTORE = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="1,4 4,4 4,1"/><polyline points="12,1 12,4 15,4"/><polyline points="1,12 4,12 4,15"/><polyline points="12,15 12,12 15,12"/></svg>`;
 const ICON_REFRESH = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8a7 7 0 0 1 13-3.5M15 8a7 7 0 0 1-13 3.5"/><polyline points="1,1 1,5 5,5"/><polyline points="15,15 15,11 11,11"/></svg>`;
 
 // ── State ──
@@ -446,6 +446,10 @@ function createNodeEl(node) {
         e.stopPropagation();
         regenerateNode(node.id);
     });
+    header.querySelector('.burnish-node-info')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDiagnosticPanel(node.id);
+    });
     return div;
 }
 
@@ -461,6 +465,7 @@ async function regenerateNode(nodeId) {
     node.tags = null;
     node.summary = null;
     node.stats = null;
+    node._progressLog = [];
     session.activeNodeId = nodeId;
 
     // Re-render and simulate a new submission for this node's prompt
@@ -470,6 +475,7 @@ async function regenerateNode(nodeId) {
     if (contentEl) contentEl.innerHTML = getProgressHtml();
 
     addNodeSpinner(nodeId);
+    updateNodeStatus(nodeId, 'Submitting…');
 
     const promptInput = document.getElementById('prompt-input');
     const submitBtn = document.getElementById('btn-submit');
@@ -519,6 +525,7 @@ async function regenerateNode(nodeId) {
         async (fullText, newConversationId) => {
             stopProgressTimer();
             removeNodeSpinner(nodeId);
+            removeNodeStatus(nodeId);
             submitBtn.classList.remove('cancel');
             submitBtn.innerHTML = ICON_SEND;
             promptInput.disabled = false;
@@ -549,6 +556,7 @@ async function regenerateNode(nodeId) {
         async (error) => {
             stopProgressTimer();
             removeNodeSpinner(nodeId);
+            removeNodeStatus(nodeId);
             submitBtn.classList.remove('cancel');
             submitBtn.innerHTML = ICON_SEND;
             promptInput.disabled = false;
@@ -560,8 +568,13 @@ async function regenerateNode(nodeId) {
             updateNodeSummary(nodeId);
             await saveState();
         },
-        (stage, detail) => {
+        (stage, detail, meta) => {
             updateProgress(contentEl, stage, detail);
+            let statusText = detail || stage;
+            if (meta?.server) statusText += ` (${meta.server})`;
+            else if (meta?.model) statusText += ` (${meta.model})`;
+            updateNodeStatus(nodeId, statusText);
+            node._progressLog.push({ stage, detail, meta, timestamp: Date.now() });
         },
         async (stats) => {
             node.stats = stats;
@@ -709,6 +722,10 @@ function updateNodeHeader(nodeId) {
             btn.className = 'burnish-node-info';
             btn.title = parts.join(' \u2022 ');
             btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="8" y="12" text-anchor="middle" font-size="10" font-weight="600" fill="currentColor">i</text></svg>';
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleDiagnosticPanel(node.id);
+            });
             deleteBtn.parentNode.insertBefore(btn, deleteBtn);
         }
     }
@@ -736,6 +753,109 @@ function removeNodeSpinner(nodeId) {
     const el = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
     if (!el) return;
     el.querySelector('.burnish-node-spinner')?.remove();
+}
+
+function updateNodeStatus(nodeId, text) {
+    const el = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
+    if (!el) return;
+    const header = el.querySelector('.burnish-node-header');
+    if (!header) return;
+    let statusEl = header.querySelector('.burnish-node-status');
+    if (!statusEl) {
+        statusEl = document.createElement('span');
+        statusEl.className = 'burnish-node-status';
+        // Insert before the time element
+        const timeEl = header.querySelector('.burnish-node-time');
+        if (timeEl) {
+            timeEl.before(statusEl);
+        } else {
+            header.appendChild(statusEl);
+        }
+    }
+    statusEl.textContent = text;
+}
+
+function removeNodeStatus(nodeId) {
+    const el = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
+    if (!el) return;
+    el.querySelector('.burnish-node-status')?.remove();
+}
+
+function toggleDiagnosticPanel(nodeId) {
+    const el = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
+    if (!el) return;
+    const contentEl = el.querySelector('.burnish-node-content');
+    if (!contentEl) return;
+
+    // Toggle existing panel
+    const existing = contentEl.querySelector('.burnish-diagnostic-panel');
+    if (existing) { existing.remove(); return; }
+
+    // Find node data
+    const session = getActiveSession();
+    if (!session) return;
+    const node = session.nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    const panel = document.createElement('div');
+    panel.className = 'burnish-diagnostic-panel';
+
+    // Summary metrics
+    const metrics = [];
+    if (node.stats) {
+        const dur = (node.stats.durationMs / 1000).toFixed(1);
+        metrics.push(`<span class="burnish-diag-metric"><strong>Duration</strong> ${dur}s</span>`);
+        if (node.stats.inputTokens || node.stats.outputTokens) {
+            metrics.push(`<span class="burnish-diag-metric"><strong>Tokens</strong> ${(node.stats.inputTokens || 0).toLocaleString()} in / ${(node.stats.outputTokens || 0).toLocaleString()} out</span>`);
+        }
+        if (node.stats.costUsd) {
+            metrics.push(`<span class="burnish-diag-metric"><strong>Cost</strong> $${node.stats.costUsd.toFixed(4)}</span>`);
+        }
+    }
+
+    // Extract model from progress log
+    const progressLog = node._progressLog || [];
+    const modelEntry = progressLog.find(e => e.meta?.model);
+    if (modelEntry) {
+        metrics.unshift(`<span class="burnish-diag-metric"><strong>Model</strong> ${escapeHtml(modelEntry.meta.model)}</span>`);
+    }
+
+    // Step timeline
+    let stepsHtml = '';
+    if (progressLog.length > 0) {
+        const baseTime = progressLog[0].timestamp;
+        stepsHtml = '<div class="burnish-diag-steps">';
+        for (let i = 0; i < progressLog.length; i++) {
+            const step = progressLog[i];
+            const elapsed = ((step.timestamp - baseTime) / 1000).toFixed(1);
+            let label = escapeHtml(step.detail || step.stage);
+            if (step.meta?.server) label += ` (${escapeHtml(step.meta.server)})`;
+            else if (step.meta?.model) label += ` (${escapeHtml(step.meta.model)})`;
+
+            // Duration for this step = time until next step (or until end)
+            let stepDur = '';
+            if (i < progressLog.length - 1) {
+                stepDur = ((progressLog[i + 1].timestamp - step.timestamp) / 1000).toFixed(1) + 's';
+            } else if (node.stats) {
+                // Last step: compute from total duration
+                const totalEnd = progressLog[0].timestamp + node.stats.durationMs;
+                stepDur = ((totalEnd - step.timestamp) / 1000).toFixed(1) + 's';
+            }
+
+            stepsHtml += `<div class="burnish-diag-step">`
+                + `<span class="burnish-diag-check">\u2713</span>`
+                + `<span class="burnish-diag-label">${label}</span>`
+                + `<span class="burnish-diag-time">${stepDur}</span>`
+                + `</div>`;
+        }
+        stepsHtml += '</div>';
+    }
+
+    panel.innerHTML = (metrics.length > 0
+        ? `<div class="burnish-diag-metrics">${metrics.join('')}</div>` : '')
+        + stepsHtml;
+
+    contentEl.insertBefore(panel, contentEl.firstChild);
 }
 
 // ── Main Content Rendering (Tree) ──
@@ -1192,6 +1312,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             timestamp: Date.now(),
             collapsed: false,
             _toolHint: drillDownToolHint,
+            _progressLog: [],
         };
         drillDownToolHint = null; // consume
 
@@ -1224,6 +1345,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nodeEl) nodeEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
         addNodeSpinner(nodeId);
+        updateNodeStatus(nodeId, 'Submitting…');
 
         submitBtn.classList.add('cancel');
         submitBtn.innerHTML = ICON_STOP;
@@ -1274,6 +1396,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             async (fullText, newConversationId) => {
                 stopProgressTimer();
                 removeNodeSpinner(nodeId);
+                removeNodeStatus(nodeId);
                 submitBtn.classList.remove('cancel');
                 submitBtn.innerHTML = ICON_SEND;
                 promptInput.disabled = false;
@@ -1347,6 +1470,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             async (error) => {
                 stopProgressTimer();
                 removeNodeSpinner(nodeId);
+                removeNodeStatus(nodeId);
                 submitBtn.classList.remove('cancel');
                 submitBtn.innerHTML = ICON_SEND;
                 promptInput.disabled = false;
@@ -1359,8 +1483,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await saveState();
             },
             // onProgress
-            (stage, detail) => {
+            (stage, detail, meta) => {
                 updateProgress(contentEl, stage, detail);
+                let statusText = detail || stage;
+                if (meta?.server) statusText += ` (${meta.server})`;
+                else if (meta?.model) statusText += ` (${meta.model})`;
+                updateNodeStatus(nodeId, statusText);
+                node._progressLog.push({ stage, detail, meta, timestamp: Date.now() });
             },
             // onStats
             async (stats) => {
@@ -1410,7 +1539,7 @@ function streamResponse(streamUrl, onChunk, onDone, onError, onProgress, onStats
                     onError(data.message || 'Unknown error');
                     resolve();
                 } else if (data.type === 'progress') {
-                    if (onProgress) onProgress(data.stage, data.detail);
+                    if (onProgress) onProgress(data.stage, data.detail, data.meta);
                 } else if (data.type === 'content') {
                     fullText += data.text;
                     onChunk(data.text, fullText);
