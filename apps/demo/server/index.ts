@@ -104,7 +104,11 @@ app.use('/api/*', async (c, next) => {
 
 const MAX_PROMPT_LENGTH = 10_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ALLOWED_MODELS = new Set(['sonnet', 'opus', 'haiku', 'claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-haiku-4-5-20251001']);
+const ALLOWED_MODELS = new Set([
+    'sonnet', 'haiku', 'opus',
+    'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-opus-4-6',
+    'claude-sonnet-4-5-20250514',
+]);
 
 // --- API Routes ---
 
