@@ -127,13 +127,17 @@ export class LlmOrchestrator {
         console.log(`[llm] Backend: ${this.backend}, Model: ${this.model}`);
     }
 
+    private warmUpDone = false;
+
     /**
      * Pre-warm the CLI subprocess by spawning a lightweight "ping" request.
      * Fire-and-forget — runs in background, doesn't block startup.
      * Primes binary loading so the first real request is faster.
+     * Idempotent — only runs once (safe across tsx watch hot-reloads).
      */
     warmUp(): void {
-        if (this.backend !== 'cli') return;
+        if (this.backend !== 'cli' || this.warmUpDone) return;
+        this.warmUpDone = true;
 
         const claudeCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude';
         const env = { ...process.env };
@@ -157,12 +161,19 @@ export class LlmOrchestrator {
         proc.stdin.write('ping');
         proc.stdin.end();
 
+        const timeout = setTimeout(() => {
+            proc.kill();
+            console.warn('[llm] CLI warm-up timed out after 30s');
+        }, 30_000);
+
         proc.on('close', (code) => {
+            clearTimeout(timeout);
             const elapsed = Date.now() - startTime;
             console.log(`[llm] CLI warm-up completed in ${elapsed}ms (exit ${code ?? 'null'})`);
         });
 
         proc.on('error', (err) => {
+            clearTimeout(timeout);
             console.warn('[llm] CLI warm-up failed:', err.message);
         });
     }
