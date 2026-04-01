@@ -3,14 +3,21 @@
  * Multi-session management with inline conversation and infinite scroll navigation.
  */
 
-import { get, set, del, keys, createStore } from 'idb-keyval';
+import {
+    getNodeById, getChildren, getRootNodes, getAncestryPath, getActivePath, getDescendantIds,
+    SessionStore,
+    transformOutput,
+    isWriteTool, getDrillDownPrompt, generateFallbackForm,
+    StreamOrchestrator,
+    generateSummary, formatTimeAgo,
+} from '@burnish/app';
+import {
+    findStreamElements, appendStreamElement, extractHtmlContent, containsTags as containsBurnishTags,
+} from '@burnish/renderer';
 
-// ── IndexedDB Stores ──
-// Each store uses a separate database — idb-keyval's createStore only supports
-// one object store per database. Using the same DB name for both would cause
-// the second store to fail (the DB already exists with only the first store).
-const sessionStore = createStore('burnish-sessions', 'sessions');
-const nodeStore = createStore('burnish-nodes', 'nodes');
+// ── Persistence ──
+const persistence = new SessionStore();
+const streamOrchestrator = new StreamOrchestrator();
 
 // ── DOMPurify Config ──
 const PURIFY_CONFIG = {
@@ -22,7 +29,6 @@ const PURIFY_CONFIG = {
                'streaming', 'tool-id', 'fields', 'actions', 'color'],
 };
 
-const CONTAINER_TAGS = new Set(['burnish-section']);
 
 const ICON_SEND = `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10l7-7v4h9v6H9v4z" transform="rotate(-90 10 10)"/></svg>`;
 const ICON_STOP = `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><rect x="4" y="4" width="12" height="12" rx="2"/></svg>`;
@@ -30,9 +36,9 @@ const ICON_FOCUS = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" 
 const ICON_RESTORE = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="1,4 4,4 4,1"/><polyline points="12,1 12,4 15,4"/><polyline points="1,12 4,12 4,15"/><polyline points="12,15 12,12 15,12"/></svg>`;
 const ICON_REFRESH = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8a7 7 0 0 1 13-3.5M15 8a7 7 0 0 1-13 3.5"/><polyline points="1,1 1,5 5,5"/><polyline points="15,15 15,11 11,11"/></svg>`;
 
+const SAFE_ATTRS = new Set(PURIFY_CONFIG.ADD_ATTR);
+
 // ── State ──
-let activeSource = null;
-let cancelGeneration = 0;
 let fastMode = localStorage.getItem('burnish:fastMode') === 'true';
 let searchQuery = '';
 let searchDebounceTimer = null;
@@ -50,26 +56,6 @@ function getActiveSession() {
     return sessions.find(s => s.id === activeSessionId);
 }
 
-// ── Tree Utilities ──
-function getNodeById(session, id) { return session.nodes.find(n => n.id === id); }
-function getChildren(session, nodeId) { return session.nodes.filter(n => n.parentId === nodeId); }
-function getRootNodes(session) { return session.nodes.filter(n => !n.parentId); }
-
-function getAncestryPath(session, nodeId) {
-    const path = [];
-    let current = getNodeById(session, nodeId);
-    while (current) {
-        path.unshift(current);
-        current = current.parentId ? getNodeById(session, current.parentId) : null;
-    }
-    return path;
-}
-
-function getActivePath(session) {
-    if (!session.activeNodeId) return new Set();
-    return new Set(getAncestryPath(session, session.activeNodeId).map(n => n.id));
-}
-
 // Track which node to branch from (set when user clicks "Branch" button)
 let branchFromNodeId = null;
 
@@ -82,157 +68,14 @@ let drillDownToolHint = null;
 // Cache of tool schemas keyed by tool name (populated from /api/servers)
 const toolSchemaCache = {};
 
-// ── Persistence (IndexedDB via idb-keyval) ──
-
-// Track which sessions have had their nodes loaded from IndexedDB
-const _loadedSessionIds = new Set();
+// ── Persistence (delegated to SessionStore) ──
 
 async function saveState() {
-    try {
-        // Save session metadata (with nodeIds instead of full nodes)
-        // For unloaded sessions, preserve their existing _nodeIds to avoid orphaning nodes
-        const sessionMeta = sessions.map(s => ({
-            id: s.id,
-            title: s.title,
-            createdAt: s.createdAt,
-            updatedAt: s.updatedAt,
-            conversationId: s.conversationId,
-            activeNodeId: s.activeNodeId,
-            nodeIds: _loadedSessionIds.has(s.id) ? s.nodes.map(n => n.id) : (s._nodeIds || []),
-        }));
-        await set('sessions', { activeSessionId, sessions: sessionMeta }, sessionStore);
-
-        // Save individual nodes for all loaded sessions
-        const nodePromises = [];
-        for (const s of sessions) {
-            if (!_loadedSessionIds.has(s.id)) continue;
-            for (const node of s.nodes) {
-                nodePromises.push(set(`node:${node.id}`, node, nodeStore));
-            }
-        }
-        await Promise.all(nodePromises);
-    } catch (e) {
-        console.error('Failed to save state:', e);
-    }
+    await persistence.save(sessions, activeSessionId);
 }
 
 async function loadState() {
-    try {
-        // Try migration from localStorage first
-        await migrateFromLocalStorage();
-
-        const data = await get('sessions', sessionStore);
-        if (!data?.sessions?.length) return null;
-
-        // Load nodes for the active session only (lazy-load others on switch)
-        const activeId = data.activeSessionId || data.sessions[0].id;
-        const fullSessions = [];
-        for (const meta of data.sessions) {
-            const session = {
-                id: meta.id,
-                title: meta.title,
-                createdAt: meta.createdAt,
-                updatedAt: meta.updatedAt,
-                conversationId: meta.conversationId,
-                activeNodeId: meta.activeNodeId,
-                nodes: [],
-            };
-
-            if (meta.id === activeId) {
-                await loadSessionNodes(session, meta.nodeIds || []);
-                _loadedSessionIds.add(meta.id);
-            } else {
-                // Store nodeIds for lazy loading later
-                session._nodeIds = meta.nodeIds || [];
-            }
-
-            fullSessions.push(session);
-        }
-
-        return { activeSessionId: activeId, sessions: fullSessions };
-    } catch (e) {
-        console.error('Failed to load state:', e);
-        return null;
-    }
-}
-
-async function loadSessionNodes(session, nodeIds) {
-    if (!nodeIds || nodeIds.length === 0) return;
-    const nodes = await Promise.all(
-        nodeIds.map(id => get(`node:${id}`, nodeStore))
-    );
-    session.nodes = nodes.filter(Boolean);
-}
-
-async function clearState() {
-    const allKeys = await keys(nodeStore);
-    await Promise.all(allKeys.map(k => del(k, nodeStore)));
-    await del('sessions', sessionStore);
-    _loadedSessionIds.clear();
-}
-
-async function migrateFromLocalStorage() {
-    try {
-        // Check if already migrated (IndexedDB has data)
-        const existing = await get('sessions', sessionStore);
-        if (existing) return;
-
-        // Try new multi-session format from localStorage
-        const raw = localStorage.getItem('burnish:sessions');
-        if (raw) {
-            const data = JSON.parse(raw);
-            if (data?.sessions?.length > 0) {
-                // Save session metadata
-                const sessionMeta = data.sessions.map(s => ({
-                    id: s.id,
-                    title: s.title,
-                    createdAt: s.createdAt,
-                    updatedAt: s.updatedAt,
-                    conversationId: s.conversationId,
-                    activeNodeId: s.activeNodeId,
-                    nodeIds: (s.nodes || []).map(n => n.id),
-                }));
-                await set('sessions', { activeSessionId: data.activeSessionId, sessions: sessionMeta }, sessionStore);
-
-                // Save individual nodes
-                const nodePromises = [];
-                for (const s of data.sessions) {
-                    for (const node of (s.nodes || [])) {
-                        nodePromises.push(set(`node:${node.id}`, node, nodeStore));
-                    }
-                }
-                await Promise.all(nodePromises);
-
-                localStorage.removeItem('burnish:sessions');
-                return;
-            }
-        }
-
-        // Try old single-session format
-        const oldRaw = localStorage.getItem('burnish:state');
-        if (oldRaw) {
-            const old = JSON.parse(oldRaw);
-            if (old.nodes?.length > 0) {
-                const sessionId = generateId();
-                const sessionMeta = [{
-                    id: sessionId,
-                    title: old.nodes[0]?.promptDisplay || 'Previous session',
-                    createdAt: old.nodes[0]?.timestamp || Date.now(),
-                    updatedAt: old.nodes[old.nodes.length - 1]?.timestamp || Date.now(),
-                    conversationId: old.conversationId,
-                    activeNodeId: old.nodes[old.nodes.length - 1]?.id,
-                    nodeIds: old.nodes.map(n => n.id),
-                }];
-                await set('sessions', { activeSessionId: sessionId, sessions: sessionMeta }, sessionStore);
-
-                const nodePromises = old.nodes.map(n => set(`node:${n.id}`, n, nodeStore));
-                await Promise.all(nodePromises);
-            }
-            localStorage.removeItem('burnish:state');
-        }
-    } catch (e) {
-        console.error('Migration from localStorage failed:', e);
-    }
+    return persistence.load();
 }
 
 // ── Session CRUD ──
@@ -247,7 +90,7 @@ async function createSession() {
     };
     sessions.unshift(session);
     activeSessionId = session.id;
-    _loadedSessionIds.add(session.id);
+    persistence.markLoaded(session.id);
     renderSessionList();
     renderMainContent();
     await saveState();
@@ -262,10 +105,10 @@ async function switchSession(sessionId) {
 
     // Lazy-load nodes if not yet loaded
     const session = getActiveSession();
-    if (session && !_loadedSessionIds.has(session.id) && session._nodeIds) {
-        await loadSessionNodes(session, session._nodeIds);
+    if (session && !persistence.isLoaded(session.id) && session._nodeIds) {
+        await persistence.loadNodes(session, session._nodeIds);
         delete session._nodeIds;
-        _loadedSessionIds.add(session.id);
+        persistence.markLoaded(session.id);
     }
 
     renderMainContent();
@@ -280,15 +123,17 @@ async function deleteSession(sessionId) {
 
     // Collect node IDs to delete from IndexedDB
     let nodeIds = session?.nodes?.length ? session.nodes.map(n => n.id) : (session?._nodeIds || []);
-    // Fallback: read from IndexedDB metadata if session wasn't loaded
+
+    // Fallback: read from IndexedDB metadata if session wasn't loaded and has no _nodeIds
     if (nodeIds.length === 0 && session) {
-        const meta = await get('sessions', sessionStore);
-        const saved = meta?.sessions?.find(s => s.id === sessionId);
-        if (saved?.nodeIds?.length) nodeIds = saved.nodeIds;
+        try {
+            const meta = await persistence.getSessionNodeIds(session.id);
+            if (meta?.length) nodeIds = meta;
+        } catch { /* fall through */ }
     }
 
     sessions = sessions.filter(s => s.id !== sessionId);
-    _loadedSessionIds.delete(sessionId);
+    persistence.markUnloaded(sessionId);
 
     if (activeSessionId === sessionId) {
         activeSessionId = sessions[0]?.id || null;
@@ -299,44 +144,12 @@ async function deleteSession(sessionId) {
 
     // Delete orphaned nodes from IndexedDB
     if (nodeIds.length > 0) {
-        await Promise.all(nodeIds.map(id => del(`node:${id}`, nodeStore)));
+        await persistence.deleteNodes(nodeIds);
     }
     await saveState();
 }
 
-// ── Summary & Helpers ──
-function generateSummary(contentEl) {
-    const tagEls = contentEl.querySelectorAll(
-        'burnish-stat-bar, burnish-table, burnish-card, burnish-chart, burnish-metric, burnish-section'
-    );
-    const tags = [...new Set([...tagEls].map(el => el.tagName.toLowerCase().replace('burnish-', '')))];
-
-    const statBar = contentEl.querySelector('burnish-stat-bar');
-    let keyValues = '';
-    if (statBar) {
-        try {
-            const items = JSON.parse(statBar.getAttribute('items') || '[]');
-            keyValues = items.slice(0, 3).map(i => `${i.value} ${i.label}`).join(', ');
-        } catch { /* ignore */ }
-    }
-
-    if (tags.length === 0) {
-        const text = contentEl.textContent?.trim() || '';
-        return { tags: ['text'], summary: text.substring(0, 60) + (text.length > 60 ? '...' : '') };
-    }
-    return { tags, summary: keyValues || tags.join(' + ') };
-}
-
-function formatTimeAgo(timestamp) {
-    const seconds = Math.floor((Date.now() - timestamp) / 1000);
-    if (seconds < 60) return 'just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
-}
-
+// ── Helpers ──
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -399,12 +212,12 @@ function getSearchSnippet(session, query) {
 }
 
 async function ensureAllSessionsLoaded() {
-    const unloaded = sessions.filter(s => s._nodeIds && !_loadedSessionIds.has(s.id));
+    const unloaded = sessions.filter(s => s._nodeIds && !persistence.isLoaded(s.id));
     if (unloaded.length === 0) return;
     await Promise.all(unloaded.map(async s => {
-        await loadSessionNodes(s, s._nodeIds);
+        await persistence.loadNodes(s, s._nodeIds);
         delete s._nodeIds;
-        _loadedSessionIds.add(s.id);
+        persistence.markLoaded(s.id);
     }));
 }
 
@@ -413,7 +226,7 @@ function renderSessionList() {
     if (!listEl) return;
 
     // If searching and there are unloaded sessions, load them first then re-render
-    if (searchQuery && sessions.some(s => s._nodeIds && !_loadedSessionIds.has(s.id))) {
+    if (searchQuery && sessions.some(s => s._nodeIds && !persistence.isLoaded(s.id))) {
         ensureAllSessionsLoaded().then(() => renderSessionList());
         return;
     }
@@ -599,7 +412,7 @@ async function regenerateNode(nodeId) {
                 }
                 const elements = findStreamElements(trimmed);
                 while (renderedCount < elements.length) {
-                    appendStreamElement(contentEl, containerStack, elements[renderedCount]);
+                    appendElement(contentEl, containerStack, elements[renderedCount]);
                     renderedCount++;
                 }
             } else {
@@ -623,7 +436,7 @@ async function regenerateNode(nodeId) {
                 // Always apply transformOutput on completion to ensure
                 // color normalization rules run (streaming bypasses them)
                 contentEl.innerHTML = '';
-                const clean = transformOutput(DOMPurify.sanitize(extractHtmlContent(trimmed), PURIFY_CONFIG));
+                const clean = transformOutput(DOMPurify.sanitize(extractContent(trimmed), PURIFY_CONFIG));
                 const temp = document.createElement('template');
                 temp.innerHTML = clean;
                 contentEl.appendChild(temp.content);
@@ -702,15 +515,6 @@ async function scrollToNode(nodeId, highlight = true) {
     await saveState();
 }
 
-function getDescendantIds(session, nodeId) {
-    const ids = [nodeId];
-    const children = getChildren(session, nodeId);
-    for (const child of children) {
-        ids.push(...getDescendantIds(session, child.id));
-    }
-    return ids;
-}
-
 async function deleteNode(nodeId) {
     const session = getActiveSession();
     if (!session) return;
@@ -746,7 +550,7 @@ async function deleteNode(nodeId) {
     renderSessionList();
 
     // Remove deleted nodes from IndexedDB
-    await Promise.all([...removeIds].map(id => del(`node:${id}`, nodeStore)));
+    await persistence.deleteNodes([...removeIds]);
     await saveState();
 }
 
@@ -986,7 +790,7 @@ function renderTreeNode(container, session, node, activePath) {
     if (node.response) {
         const contentEl = nodeEl.querySelector('.burnish-node-content');
         if (node.type === 'components') {
-            const clean = transformOutput(DOMPurify.sanitize(extractHtmlContent(node.response), PURIFY_CONFIG));
+            const clean = transformOutput(DOMPurify.sanitize(extractContent(node.response), PURIFY_CONFIG));
             const temp = document.createElement('template');
             temp.innerHTML = clean;
             contentEl.appendChild(temp.content);
@@ -1190,10 +994,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     submitBtn.addEventListener('click', () => {
-        if (activeSource) {
-            cancelGeneration++;
-            activeSource.close();
-            activeSource = null;
+        if (streamOrchestrator.isStreaming) {
+            streamOrchestrator.cancel();
             submitBtn.classList.remove('cancel');
             submitBtn.innerHTML = ICON_SEND;
         } else {
@@ -1270,10 +1072,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     container.addEventListener('burnish-card-action', (e) => {
         const { title, status, itemId } = e.detail || {};
         if (title) {
-            if (activeSource) {
-                cancelGeneration++;
-                activeSource.close();
-                activeSource = null;
+            if (streamOrchestrator.isStreaming) {
+                streamOrchestrator.cancel();
                 submitBtn.classList.remove('cancel');
                 submitBtn.innerHTML = ICON_SEND;
             }
@@ -1481,7 +1281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                     const elements = findStreamElements(trimmed);
                     while (renderedCount < elements.length) {
-                        appendStreamElement(contentEl, containerStack, elements[renderedCount]);
+                        appendElement(contentEl, containerStack, elements[renderedCount]);
                         renderedCount++;
                     }
                 } else {
@@ -1508,7 +1308,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // Always apply transformOutput on completion to ensure
                     // color normalization rules run (streaming bypasses them)
                     contentEl.innerHTML = '';
-                    const clean = transformOutput(DOMPurify.sanitize(extractHtmlContent(trimmed), PURIFY_CONFIG));
+                    const clean = transformOutput(DOMPurify.sanitize(extractContent(trimmed), PURIFY_CONFIG));
                     const temp = document.createElement('template');
                     temp.innerHTML = clean;
                     contentEl.appendChild(temp.content);
@@ -1599,301 +1399,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// ── SSE Streaming ──
+// ── SSE Streaming (via StreamOrchestrator) ──
 
-async function submitPrompt(prompt, existingConversationId, onChunk, onDone, onError, onProgress, onStats) {
-    try {
-        const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, conversationId: existingConversationId, model: fastMode ? 'haiku' : undefined }),
-        });
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const data = await res.json();
-        const conversationId = data.conversationId;
-        await streamResponse(data.streamUrl, onChunk, (fullText) => onDone(fullText, conversationId), onError, onProgress, onStats);
-    } catch (err) {
-        onError(err.message);
-    }
+function submitPrompt(prompt, existingConversationId, onChunk, onDone, onError, onProgress, onStats) {
+    streamOrchestrator.submitPrompt(
+        '', // same origin
+        prompt,
+        existingConversationId,
+        fastMode ? 'haiku' : undefined,
+        { onChunk, onDone, onError, onProgress, onStats },
+    ).catch(onError);
 }
 
-function streamResponse(streamUrl, onChunk, onDone, onError, onProgress, onStats) {
-    let fullText = '';
-    const myGeneration = cancelGeneration;
+// ── Stream Helpers (wrapping @burnish/renderer) ──
 
-    return new Promise((resolve) => {
-        const source = new EventSource(streamUrl);
-        activeSource = source;
-
-        source.onmessage = (event) => {
-            if (cancelGeneration > myGeneration) return;
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'error') {
-                    source.close(); activeSource = null;
-                    onError(data.message || 'Unknown error');
-                    resolve();
-                } else if (data.type === 'progress') {
-                    if (onProgress) onProgress(data.stage, data.detail, data.meta);
-                } else if (data.type === 'content') {
-                    fullText += data.text;
-                    onChunk(data.text, fullText);
-                } else if (data.type === 'stats') {
-                    if (onStats) onStats(data);
-                } else if (data.type === 'done') {
-                    source.close(); activeSource = null;
-                    onDone(fullText);
-                    resolve();
-                }
-            } catch (e) { console.error('SSE parse error:', e); }
-        };
-
-        source.onerror = () => {
-            source.close(); activeSource = null;
-            if (cancelGeneration > myGeneration) { resolve(); }
-            else if (fullText) { onDone(fullText); resolve(); }
-            else { onError('Connection lost'); resolve(); }
-        };
-    });
+function sanitizeHtml(html) {
+    return DOMPurify.sanitize(html, PURIFY_CONFIG);
 }
 
-// ── Stream Parser ──
-
-function containsBurnishTags(text) { return /<burnish-[a-z]/.test(text); }
-
-function findStreamElements(text) {
-    const elements = [];
-    const cleaned = text.replace(/<use_mcp_tool[\s\S]*?<\/use_mcp_tool>/g, '');
-    const re = /<(\/?)((burnish-[a-z-]+)|div|h[1-6]|p|section|ul|ol|table)(\s[^>]*)?>/g;
-    let m;
-    while ((m = re.exec(cleaned)) !== null) {
-        const isClose = m[1] === '/';
-        const tagName = m[2];
-        if (isClose) { if (CONTAINER_TAGS.has(tagName)) elements.push({ type: 'close', tagName, html: m[0] }); continue; }
-        if (CONTAINER_TAGS.has(tagName)) { elements.push({ type: 'open', tagName, html: m[0] }); continue; }
-        if (cleaned[m.index + m[0].length - 2] === '/') { elements.push({ type: 'leaf', tagName, html: m[0] }); continue; }
-        let depth = 1;
-        const closeRe = new RegExp(`<(${tagName})(\\s[^>]*)?>|</${tagName}>`, 'g');
-        closeRe.lastIndex = m.index + m[0].length;
-        let cm;
-        while ((cm = closeRe.exec(cleaned)) !== null) {
-            if (cm[0].startsWith('</')) { depth--; if (depth === 0) { elements.push({ type: 'leaf', tagName, html: cleaned.substring(m.index, cm.index + cm[0].length) }); re.lastIndex = cm.index + cm[0].length; break; } } else { depth++; }
-        }
-        if (depth > 0) return elements;
-    }
-    return elements;
+function appendElement(root, stack, element) {
+    appendStreamElement(root, stack, element, SAFE_ATTRS, sanitizeHtml);
 }
 
-const SAFE_ATTRS = new Set(PURIFY_CONFIG.ADD_ATTR);
-
-function appendStreamElement(root, stack, element) {
-    const parent = stack.length > 0 ? stack[stack.length - 1] : root;
-    if (element.type === 'open') {
-        const el = document.createElement(element.tagName);
-        const attrRe = /([\w-]+)(?:=(?:"([^"]*)"|'([^']*)'|([\w-]+)))?/g;
-        let am;
-        while ((am = attrRe.exec(element.html)) !== null) {
-            const name = am[1].toLowerCase();
-            if (name === element.tagName || !SAFE_ATTRS.has(name)) continue;
-            el.setAttribute(name, am[2] ?? am[3] ?? am[4] ?? '');
-        }
-        parent.appendChild(el); stack.push(el);
-    } else if (element.type === 'close') {
-        if (stack.length > 0) stack.pop();
-    } else {
-        const clean = DOMPurify.sanitize(element.html, PURIFY_CONFIG);
-        const temp = document.createElement('template');
-        temp.innerHTML = clean;
-        parent.appendChild(temp.content);
-    }
+function extractContent(text) {
+    return extractHtmlContent(text, 'burnish-', renderMarkdown);
 }
 
-function extractHtmlContent(text) {
-    let cleaned = text.replace(/<use_mcp_tool[\s\S]*?<\/use_mcp_tool>/g, '');
-    const htmlStart = cleaned.search(/<(?:burnish-[a-z]|div)/);
-    if (htmlStart === -1) return cleaned.trim();
-    const preamble = cleaned.substring(0, htmlStart).trim();
-    const htmlContent = cleaned.substring(htmlStart).trim();
-    let result = '';
-    if (preamble) result += `<div class="burnish-text-preamble">${renderMarkdown(preamble)}</div>`;
-    result += htmlContent;
-    return result;
-}
+// transformOutput is imported from @burnish/app
 
-/**
- * Layer 2: Deterministic output transformation.
- * Runs AFTER DOMPurify sanitization, BEFORE DOM injection.
- * Enforces rules the LLM might ignore from the system prompt.
- */
-function transformOutput(html) {
-    const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html');
-    const root = doc.body.firstElementChild;
-    if (!root) return html;
+// generateFallbackForm is imported from @burnish/app
 
-    // Rule 1: Normalize card statuses
-    // "success" should only appear on cards showing a completed action result
-    // (e.g. "Issue created", "File written"). For data listing cards, use "info".
-    root.querySelectorAll('burnish-card').forEach(card => {
-        const status = card.getAttribute('status');
-        const itemId = card.getAttribute('item-id') || '';
-        const body = card.getAttribute('body') || '';
-
-        // Tool cards always get info
-        if (itemId.includes('__')) {
-            card.setAttribute('status', 'info');
-            return;
-        }
-
-        // Cards in listing context: only override "success" → "info"
-        // Let meaningful statuses pass through (open, closed, bug, etc.)
-        if (status === 'success') {
-            const parentSection = card.closest('burnish-section');
-            if (parentSection) {
-                card.setAttribute('status', 'info');
-            }
-        }
-    });
-
-    // Rule 1b: Sections in informational context should use "info" status
-    // (ensures consistent blue dots instead of random LLM-assigned colors)
-    root.querySelectorAll('burnish-section').forEach(section => {
-        const hasCards = section.querySelector('burnish-card');
-        if (hasCards) {
-            section.setAttribute('status', 'info');
-        }
-    });
-
-    // Rule 1c: Stat-bar chips should use "info" when sibling content is informational
-    root.querySelectorAll('burnish-stat-bar').forEach(bar => {
-        const parent = bar.parentElement;
-        const hasSections = parent?.querySelector('burnish-section');
-        if (hasSections) {
-            try {
-                const items = JSON.parse(bar.getAttribute('items') || '[]');
-                const hasGreen = items.some(i => i.color === 'success' || i.color === 'healthy');
-                if (hasGreen) {
-                    const updated = items.map(item =>
-                        (item.color === 'success' || item.color === 'healthy')
-                            ? { ...item, color: 'info' }
-                            : item
-                    );
-                    bar.setAttribute('items', JSON.stringify(updated));
-                }
-            } catch { /* ignore */ }
-        }
-    });
-
-    // Rule 1d: Propagate stat-bar pill colors to matching section dots
-    const statusColorMap = {
-        success: 'var(--burnish-success, #16a34a)',
-        healthy: 'var(--burnish-success, #16a34a)',
-        warning: 'var(--burnish-warning, #ca8a04)',
-        error: 'var(--burnish-error, #dc2626)',
-        failing: 'var(--burnish-error, #dc2626)',
-        info: 'var(--burnish-info, #6366f1)',
-        muted: 'var(--burnish-muted, #9ca3af)',
-    };
-    root.querySelectorAll('burnish-stat-bar').forEach(bar => {
-        try {
-            const items = JSON.parse(bar.getAttribute('items') || '[]');
-            const parent = bar.parentElement;
-            if (!parent) return;
-            const sections = parent.querySelectorAll('burnish-section');
-            for (const section of sections) {
-                const sectionLabel = (section.getAttribute('label') || '').toLowerCase();
-                if (!sectionLabel) continue;
-                const sectionWords = new Set(sectionLabel.split(/\s+/));
-                // Match: any non-stopword from stat-bar item label appears in section label
-                const stopwords = new Set(['operations', 'items', 'total', 'all', 'other', 'the', 'and', 'or']);
-                const match = items.find(item => {
-                    const itemWords = (item.label || '').toLowerCase().split(/\s+/);
-                    return itemWords.some(w => w && !stopwords.has(w) && sectionWords.has(w));
-                });
-                if (match) {
-                    const resolvedColor = statusColorMap[(match.color || '').toLowerCase()] || match.color || '';
-                    if (resolvedColor) {
-                        section.setAttribute('color', resolvedColor);
-                    }
-                }
-            }
-        } catch { /* ignore */ }
-    });
-
-    // Rule 2: Sanitize lookup prompts — strip any specific tool/server name references
-    root.querySelectorAll('burnish-form').forEach(form => {
-        const fieldsAttr = form.getAttribute('fields');
-        if (!fieldsAttr) return;
-        try {
-            const fields = JSON.parse(fieldsAttr);
-            let changed = false;
-            for (const field of fields) {
-                if (field.lookup?.prompt) {
-                    // Remove references to specific MCP tool names (mcp__xxx__yyy patterns)
-                    const cleaned = field.lookup.prompt.replace(/mcp__\w+__\w+/g, '').replace(/\s{2,}/g, ' ').trim();
-                    if (cleaned !== field.lookup.prompt) {
-                        field.lookup.prompt = cleaned || `Find valid values for ${field.label || field.key}`;
-                        changed = true;
-                    }
-                }
-            }
-            if (changed) form.setAttribute('fields', JSON.stringify(fields));
-        } catch { /* ignore parse errors */ }
-    });
-
-    return root.innerHTML;
-}
-
-// ── Fallback Form Generator ──
-function generateFallbackForm(toolName, schema) {
-    const props = schema.properties || {};
-    const required = new Set(schema.required || []);
-    const fields = Object.entries(props).map(([key, prop]) => {
-        const field = {
-            key,
-            label: prop.title || key.replace(/_/g, ' '),
-            type: prop.type === 'number' || prop.type === 'integer' ? 'number' : prop.enum ? 'select' : 'text',
-            required: required.has(key),
-        };
-        if (prop.description) field.placeholder = prop.description;
-        if (prop.default !== undefined) field.value = String(prop.default);
-        if (prop.enum) field.options = prop.enum.map(String);
-        return field;
-    });
-    if (fields.length === 0) return null;
-    const displayName = (toolName.split('__').pop() || toolName).replace(/_/g, ' ');
-    return `<burnish-form title="${escapeAttr(displayName)}" tool-id="${escapeAttr(toolName)}" fields='${JSON.stringify(fields).replace(/'/g, '&#39;')}'></burnish-form>`;
-}
-
-// ── Drill-Down ──
-// Write/mutate tool patterns — these should NOT be auto-invoked
-const WRITE_TOOL_PATTERNS = /^(create|update|delete|remove|push|write|edit|move|fork|merge|add|set|close|lock|assign)/i;
-
-function getDrillDownPrompt(title, status, itemId) {
-    const idClause = itemId ? ` (tool: ${itemId})` : '';
-    const looksLikeTool = itemId && (itemId.includes('__') || itemId.includes('mcp_'));
-
-    if (looksLikeTool) {
-        const toolName = title || '';
-        const isWrite = WRITE_TOOL_PATTERNS.test(toolName);
-
-        // All tools: let the LLM decide based on required parameters
-        // Write tools MUST show a form. Read tools with required params SHOULD show a form.
-        return `The user wants to use the "${title}" tool${idClause}.
-
-${isWrite ? 'This is a WRITE operation — do NOT call it. Show a form.' : 'Check if this tool has required parameters.'}
-
-RULES:
-- If the tool has required parameters that need user input → show a burnish-form with the parameters as fields. Add lookup to fields where values can be searched. Do NOT guess parameter values.
-- If the tool can run with NO parameters or has obvious defaults (like listing the current directory) → call it and show results.
-${isWrite ? '- This is a write tool — ALWAYS show a form, never auto-invoke.' : '- Only auto-invoke if truly no user input is needed.'}
-
-EXAMPLE — a tool with required params MUST produce a form like this:
-<burnish-form title="${title}" tool-id="${itemId || 'tool_name'}" fields='[{"key":"query","label":"Search query","type":"text","required":true,"placeholder":"enter value"}]'></burnish-form>
-
-Use ONLY burnish-* web components. Include burnish-actions with next steps after results.`;
-    }
-    return `Explore "${title}"${idClause} in more detail. Call the appropriate tools to get real data and show the results using burnish-* web components. If a tool requires parameters, show a burnish-form instead of guessing. Include burnish-actions with next steps.`;
-}
+// getDrillDownPrompt and isWriteTool are imported from @burnish/app
 
 // ── Helpers ──
 function renderMarkdown(text) {
