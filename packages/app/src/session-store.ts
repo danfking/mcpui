@@ -147,6 +147,20 @@ export class SessionStore {
         session.nodes = nodes.filter(Boolean) as AppNode[];
     }
 
+    /**
+     * Look up a session's nodeIds from persisted metadata.
+     * Useful when a session hasn't been loaded into memory.
+     */
+    async getSessionNodeIds(sessionId: string): Promise<string[] | null> {
+        try {
+            const data = await get('sessions', this.sessionDb);
+            const meta = data?.sessions?.find((s: SessionMeta) => s.id === sessionId);
+            return meta?.nodeIds?.length ? meta.nodeIds : null;
+        } catch {
+            return null;
+        }
+    }
+
     async deleteNodes(nodeIds: string[]): Promise<void> {
         await Promise.all(nodeIds.map(id => del(`node:${id}`, this.nodeDb)));
     }
@@ -160,6 +174,8 @@ export class SessionStore {
 
     async migrateFromLocalStorage(): Promise<void> {
         try {
+            if (typeof localStorage === 'undefined') return;
+
             const existing = await get('sessions', this.sessionDb);
             if (existing) return;
 

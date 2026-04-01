@@ -20,6 +20,10 @@ const STATUS_COLOR_MAP: Record<string, string> = {
 };
 
 export function transformOutput(html: string, options?: TransformOutputOptions): string {
+    if (!options?.domParser && typeof DOMParser === 'undefined') {
+        // No DOMParser available (Node.js) and none injected — return html unchanged
+        return html;
+    }
     const parser = options?.domParser ?? new DOMParser();
     const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
     const root = doc.body.firstElementChild;

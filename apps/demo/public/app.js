@@ -124,6 +124,14 @@ async function deleteSession(sessionId) {
     // Collect node IDs to delete from IndexedDB
     let nodeIds = session?.nodes?.length ? session.nodes.map(n => n.id) : (session?._nodeIds || []);
 
+    // Fallback: read from IndexedDB metadata if session wasn't loaded and has no _nodeIds
+    if (nodeIds.length === 0 && session) {
+        try {
+            const meta = await persistence.getSessionNodeIds(session.id);
+            if (meta?.length) nodeIds = meta;
+        } catch { /* fall through */ }
+    }
+
     sessions = sessions.filter(s => s.id !== sessionId);
     persistence.markUnloaded(sessionId);
 
@@ -1400,7 +1408,7 @@ function submitPrompt(prompt, existingConversationId, onChunk, onDone, onError, 
         existingConversationId,
         fastMode ? 'haiku' : undefined,
         { onChunk, onDone, onError, onProgress, onStats },
-    );
+    ).catch(onError);
 }
 
 // ── Stream Helpers (wrapping @burnish/renderer) ──
