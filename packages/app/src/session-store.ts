@@ -161,7 +161,6 @@ export class SessionStore {
         }
     }
 
-
     async deleteNodes(nodeIds: string[]): Promise<void> {
         await Promise.all(nodeIds.map(id => del(`node:${id}`, this.nodeDb)));
     }
@@ -176,7 +175,6 @@ export class SessionStore {
     async migrateFromLocalStorage(): Promise<void> {
         try {
             if (typeof localStorage === 'undefined') return;
-
 
             const existing = await get('sessions', this.sessionDb);
             if (existing) return;
