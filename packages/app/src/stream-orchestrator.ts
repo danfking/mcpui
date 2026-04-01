@@ -85,18 +85,30 @@ export class StreamOrchestrator {
             source.onmessage = (event) => {
                 if (this.cancelGeneration > myGeneration) return;
                 try {
+                    if (typeof event.data !== 'string' || event.data.length > 1_048_576) {
+                        console.warn('SSE: oversized or invalid event data, skipping');
+                        return;
+                    }
                     const data = JSON.parse(event.data);
+                    if (typeof data !== 'object' || data === null || typeof data.type !== 'string') {
+                        console.warn('SSE: malformed event payload, skipping');
+                        return;
+                    }
                     if (data.type === 'error') {
                         source.close(); this.activeSource = null;
-                        onError(data.message || 'Unknown error');
+                        onError(typeof data.message === 'string' ? data.message : 'Unknown error');
                         resolve();
                     } else if (data.type === 'progress') {
-                        if (onProgress) onProgress(data.stage, data.detail, data.meta);
+                        if (onProgress && typeof data.stage === 'string') {
+                            onProgress(data.stage, typeof data.detail === 'string' ? data.detail : undefined, data.meta);
+                        }
                     } else if (data.type === 'content') {
-                        fullText += data.text;
-                        onChunk(data.text, fullText);
+                        if (typeof data.text === 'string') {
+                            fullText += data.text;
+                            onChunk(data.text, fullText);
+                        }
                     } else if (data.type === 'workflow_trace') {
-                        if (onWorkflowTrace) onWorkflowTrace(data.steps);
+                        if (onWorkflowTrace && Array.isArray(data.steps)) onWorkflowTrace(data.steps);
                     } else if (data.type === 'stats') {
                         if (onStats) onStats(data);
                     } else if (data.type === 'done') {
