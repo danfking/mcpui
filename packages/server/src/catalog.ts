@@ -48,6 +48,12 @@ export const CATALOG: PresetServer[] = [
         category: 'devtools',
         config: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'] },
     },
+    {
+        id: 'mcpfinder', name: 'MCP Finder',
+        description: 'Search the MCP registry to discover servers',
+        category: 'devtools',
+        config: { command: 'npx', args: ['-y', '@iflow-mcp/mcpfinder-server'] },
+    },
 
     // ── SaaS & APIs ──
     {
