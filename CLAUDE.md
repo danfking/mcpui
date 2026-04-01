@@ -58,14 +58,22 @@ All commit messages must follow `type(scope): description`:
 burnish/
 ├── packages/
 │   ├── components/     # @burnish/components — Lit web components (card, table, chart, etc.)
-│   └── renderer/       # @burnish/renderer — streaming HTML parser, sanitizer, component mapper
+│   ├── renderer/       # @burnish/renderer — streaming HTML parser, sanitizer, component mapper
+│   ├── server/         # @burnish/server — MCP hub, LLM orchestrator, conversation store
+│   └── app/            # @burnish/app — headless SDK: nav tree, sessions, streaming, output transform
 ├── apps/
-│   └── demo/           # Demo app — Hono backend + vanilla HTML frontend
-│       ├── server/     # LLM orchestrator, MCP client hub, API endpoints
-│       └── public/     # SPA shell, app.js orchestration
+│   └── demo/           # Thin demo shell — Hono routes + DOM rendering/events
+│       ├── server/     # index.ts (~200 LOC Hono wrapper over @burnish/server)
+│       └── public/     # SPA shell, app.js (DOM-only, imports @burnish/app + @burnish/renderer)
 ├── package.json        # pnpm workspace root
 └── CLAUDE.md           # this file
 ```
+
+### Package Responsibilities
+- **@burnish/components** — Lit web components, publishable to npm/CDN
+- **@burnish/renderer** — Stream parser, HTML sanitizer config, component mapper
+- **@burnish/server** — `McpHub` (MCP client management), `LlmOrchestrator` (dual CLI/API backends), `ConversationStore`, guards, catalog, prompt template
+- **@burnish/app** — Framework-agnostic headless SDK: `SessionStore` (IndexedDB), `StreamOrchestrator` (SSE), navigation tree utils, output transformer, drill-down helpers, summary utils
 
 ## Conventions
 
