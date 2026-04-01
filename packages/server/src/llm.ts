@@ -128,6 +128,46 @@ export class LlmOrchestrator {
     }
 
     /**
+     * Pre-warm the CLI subprocess by spawning a lightweight "ping" request.
+     * Fire-and-forget — runs in background, doesn't block startup.
+     * Primes binary loading so the first real request is faster.
+     */
+    warmUp(): void {
+        if (this.backend !== 'cli') return;
+
+        const claudeCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+        const env = { ...process.env };
+        delete env.CLAUDECODE;
+
+        console.log('[llm] Warming up CLI subprocess…');
+        const startTime = Date.now();
+
+        const proc = spawn(claudeCmd, [
+            '--print',
+            '--model', 'haiku',
+            '--tools', '',
+            '--setting-sources', 'user',
+        ], {
+            stdio: ['pipe', 'ignore', 'ignore'],
+            env,
+            cwd: this.cwd,
+            shell: process.platform === 'win32',
+        });
+
+        proc.stdin.write('ping');
+        proc.stdin.end();
+
+        proc.on('close', (code) => {
+            const elapsed = Date.now() - startTime;
+            console.log(`[llm] CLI warm-up completed in ${elapsed}ms (exit ${code ?? 'null'})`);
+        });
+
+        proc.on('error', (err) => {
+            console.warn('[llm] CLI warm-up failed:', err.message);
+        });
+    }
+
+    /**
      * Stream a response for a conversation.
      * Yields StreamChunk objects (content text or progress updates).
      */
@@ -203,6 +243,9 @@ export class LlmOrchestrator {
                 cwd: this.cwd,
                 shell: process.platform === 'win32',
             });
+
+            // Immediate progress feedback so user doesn't stare at a blank screen
+            yield { type: 'progress', stage: 'initializing', detail: 'Initializing tools…', meta: { model: useModel } } as StreamChunk;
 
             // Send user message via stdin
             proc.stdin.write(userMessage);

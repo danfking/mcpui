@@ -121,7 +121,7 @@ app.post('/api/chat', async (c) => {
     if (body.prompt.length > MAX_PROMPT_LENGTH) {
         return c.json({ error: `prompt exceeds max length of ${MAX_PROMPT_LENGTH} characters` }, 400);
     }
-    if (body.conversationId !== undefined && !UUID_RE.test(body.conversationId)) {
+    if (body.conversationId != null && !UUID_RE.test(body.conversationId)) {
         return c.json({ error: 'conversationId must be a valid UUID' }, 400);
     }
     if (body.model !== undefined && !ALLOWED_MODELS.has(body.model)) {
@@ -382,6 +382,9 @@ async function start() {
         cwd: resolve(__dirname, '..'),
         mcpConfigPath: resolvedConfigPath,
     });
+
+    // Fire-and-forget: pre-warm the CLI binary so first request is faster
+    llm.warmUp();
 
     try {
         await mcpHub.initialize(resolvedConfigPath);
