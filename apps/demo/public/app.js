@@ -717,7 +717,8 @@ function toggleDiagnosticPanel(nodeId) {
     let stepsHtml = '';
     if (progressLog.length > 0) {
         const baseTime = progressLog[0].timestamp;
-        stepsHtml = '<div class="burnish-diag-steps">';
+        stepsHtml = '<div class="burnish-diag-section-title">Steps</div>'
+            + '<div class="burnish-diag-steps">';
         for (let i = 0; i < progressLog.length; i++) {
             const step = progressLog[i];
             const elapsed = ((step.timestamp - baseTime) / 1000).toFixed(1);
@@ -749,7 +750,7 @@ function toggleDiagnosticPanel(nodeId) {
     const componentLog = node._componentLog || [];
     if (componentLog.length > 0) {
         const modelName = modelEntry ? modelEntry.meta.model : '';
-        const streamStart = progressLog.length > 0 ? progressLog[0].timestamp : componentLog[0].timestamp;
+        const streamStart = progressLog.length > 0 ? progressLog[progressLog.length - 1].timestamp : componentLog[0].timestamp;
         componentsHtml = '<div class="burnish-diag-section-title">Components</div>'
             + '<div class="burnish-diag-steps">';
         for (let i = 0; i < componentLog.length; i++) {
@@ -768,8 +769,8 @@ function toggleDiagnosticPanel(nodeId) {
 
     panel.innerHTML = (metrics.length > 0
         ? `<div class="burnish-diag-metrics">${metrics.join('')}</div>` : '')
-        + componentsHtml
-        + stepsHtml;
+        + stepsHtml
+        + componentsHtml;
 
     contentEl.insertBefore(panel, contentEl.firstChild);
 }
