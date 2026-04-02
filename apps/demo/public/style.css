@@ -1032,36 +1032,6 @@ body {
 }
 .burnish-custom-env-add:hover { text-decoration: underline; }
 
-/* ── Custom Server Button & Form ── */
-.burnish-custom-server-btn {
-    width: 100%; padding: 12px; margin-top: 16px;
-    background: none; border: 2px dashed #e5e7eb;
-    border-radius: 6px; font-size: 13px; font-weight: 500;
-    color: #6b7280; cursor: pointer;
-    transition: all 0.15s ease;
-}
-.burnish-custom-server-btn:hover {
-    border-color: #4f6df5; color: #4f6df5; background: rgba(79,109,245,0.04);
-}
-.burnish-custom-env-row {
-    display: flex; gap: 8px; align-items: center; margin-bottom: 6px;
-}
-.burnish-custom-env-row input {
-    flex: 1; padding: 7px 10px; border: 1px solid #e5e7eb;
-    border-radius: 6px; font-size: 12px; font-family: inherit; box-sizing: border-box;
-}
-.burnish-custom-env-row input:focus { outline: none; border-color: #4f6df5; }
-.burnish-custom-env-remove {
-    background: none; border: none; color: #9ca3af; cursor: pointer;
-    font-size: 18px; padding: 0 4px; line-height: 1; flex-shrink: 0;
-}
-.burnish-custom-env-remove:hover { color: #ef4444; }
-.burnish-custom-env-add {
-    background: none; border: none; color: #4f6df5; cursor: pointer;
-    font-size: 12px; padding: 4px 0; font-family: inherit;
-}
-.burnish-custom-env-add:hover { text-decoration: underline; }
-
 /* ── Diagnostic Panel ── */
 .burnish-diagnostic-panel {
     background: white;
