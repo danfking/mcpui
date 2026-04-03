@@ -330,6 +330,16 @@ body {
     background: rgba(79, 109, 245, 0.04);
 }
 
+/* ── Empty State Hint ── */
+.burnish-empty-hint {
+    margin-top: 24px;
+    font-size: 13px;
+    color: var(--burnish-text-muted, #9ca3af);
+}
+.burnish-hint-text {
+    font-style: italic;
+}
+
 /* ── Skeleton Loading ── */
 .burnish-skeleton { padding: 16px 0; }
 .burnish-skeleton-stat-bar { display: flex; gap: 12px; margin-bottom: 24px; }

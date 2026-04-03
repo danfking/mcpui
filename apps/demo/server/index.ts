@@ -263,7 +263,16 @@ app.get('/api/chat/:id/stream', async (c) => {
                     controller.enqueue(encoder.encode('data: {"type":"done"}\n\n'));
                 } catch (err) {
                     console.error('[burnish] Stream error:', err);
-                    const data = JSON.stringify({ type: 'error', message: 'An error occurred while streaming the response' });
+                    const errMsg = err instanceof Error ? err.message : String(err);
+                    let userMessage = 'An error occurred while streaming the response';
+                    if (errMsg.includes('ECONNREFUSED')) {
+                        userMessage = 'LLM server not running. If using Ollama, start it with: ollama serve';
+                    } else if (errMsg.includes('model') && errMsg.includes('not found')) {
+                        userMessage = `Model not available. Pull it with: ollama pull ${requestModel || 'qwen2.5:7b'}`;
+                    } else if (errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT')) {
+                        userMessage = 'LLM server timed out. Is Ollama overloaded?';
+                    }
+                    const data = JSON.stringify({ type: 'error', message: userMessage });
                     controller.enqueue(encoder.encode(`data: ${data}\n\n`));
                 } finally {
                     controller.close();
@@ -499,6 +508,28 @@ async function start() {
         // If the config file doesn't exist, fall through — mcpHub.initialize will handle it
     }
 
+    // Ollama connectivity check (non-blocking)
+    if (llmBackend === 'openai') {
+        const baseUrl = openaiBaseUrl || 'http://localhost:11434/v1';
+        try {
+            const resp = await fetch(baseUrl.replace('/v1', '') + '/api/tags');
+            if (resp.ok) {
+                const data = await resp.json() as { models?: { name: string }[] };
+                const models = (data.models || []).map((m) => m.name);
+                console.log(`[burnish] Ollama connected. Available models: ${models.join(', ') || 'none'}`);
+                if (modelName && !models.some((m: string) => m.startsWith(modelName))) {
+                    console.warn(`[burnish] WARNING: Model "${modelName}" not found in Ollama.`);
+                    console.warn(`[burnish] Available: ${models.join(', ')}`);
+                    console.warn(`[burnish] Pull it: ollama pull ${modelName}`);
+                }
+            }
+        } catch {
+            console.warn('[burnish] WARNING: Cannot reach Ollama at ' + baseUrl);
+            console.warn('[burnish] Start Ollama first: ollama serve');
+            console.warn('[burnish] Then pull a model: ollama pull ' + modelName);
+        }
+    }
+
     llm.configure({
         backend: llmBackend,
         apiKey: llmBackend === 'openai' ? (openaiKey || undefined) : apiKey,
@@ -517,11 +548,11 @@ async function start() {
         const serverInfo = mcpHub.getServerInfo();
         console.log(`[burnish] Connected to ${serverInfo.length} MCP server(s)`);
         for (const s of serverInfo) {
-            console.log(`  - ${s.name}: ${s.toolCount} tools (${s.tools.map(t => t.name).join(', ')})`);
+            console.log(`  - ${s.name}: ${s.toolCount} tools`);
         }
     }).catch(err => {
-        console.warn('[burnish] Could not initialize MCP servers:', err);
-        console.warn('[burnish] Starting without MCP server connections');
+        console.warn('[burnish] MCP server initialization failed:', err instanceof Error ? err.message : err);
+        console.warn('[burnish] Check your mcp-servers.json config and ensure required env vars are set.');
     });
 
     process.on('SIGINT', async () => {
