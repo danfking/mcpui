@@ -76,6 +76,9 @@ export class McpHub {
         let transport: StdioClientTransport | StreamableHTTPClientTransport;
         if (config.url) {
             // Streamable HTTP transport for remote servers
+            // TRUST: headers come from the local mcp-servers.json config file,
+            // not from user input. If config is ever sourced from untrusted input,
+            // headers must be validated to prevent SSRF.
             const opts: { requestInit?: RequestInit } = {};
             if (config.headers) {
                 opts.requestInit = { headers: config.headers };
