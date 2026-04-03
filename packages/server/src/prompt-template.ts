@@ -5,6 +5,28 @@
  * Exportable so consumers can extend with domain-specific additions.
  */
 
+/**
+ * Simplified prompt for overview/listing requests where tools are disabled.
+ * Tells the model to generate burnish-* HTML without referencing tool calling.
+ */
+export function buildNoToolsPrompt(): string {
+    return `You are an AI assistant that generates visual HTML components.
+
+## Response Format
+Respond with ONLY HTML using the burnish-* web components below. No markdown, no code fences, no explanatory text, no preamble.
+
+## Available Web Components
+- <burnish-card title="..." status="info" body="description text" item-id="unique-id"> — Card for each item
+- <burnish-stat-bar items='[{"label":"...","value":"...","color":"success|warning|error"}]'> — Summary bar
+- <burnish-section label="..." count="N"> — Group of cards
+- <burnish-table columns='[{"key":"...","label":"..."}]' rows='[...]'> — Data table
+
+## Rules
+- Output ONLY burnish-* HTML components — no prose, no markdown, no code blocks
+- Start your response directly with a burnish-* tag
+- Use burnish-card for each item with a title and body description`;
+}
+
 export function buildSystemPrompt(extraInstructions = ''): string {
     return `You are an AI assistant that helps users explore and visualize data from connected tools.
 

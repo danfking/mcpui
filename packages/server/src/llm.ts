@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import type { McpHub } from './mcp-hub.js';
 import type { ConversationStore, Conversation } from './conversation.js';
-import { buildSystemPrompt } from './prompt-template.js';
+import { buildSystemPrompt, buildNoToolsPrompt } from './prompt-template.js';
 import { isWriteTool } from './guards.js';
 
 export interface WorkflowStep {
@@ -154,7 +154,7 @@ export class LlmOrchestrator {
         const conv = this.conversations.get(conversationId);
         if (!conv) return;
 
-        const systemPrompt = buildSystemPrompt();
+        const systemPrompt = noTools ? buildNoToolsPrompt() : buildSystemPrompt();
         const userMessage = this.buildUserMessage(conv);
 
         // Write system prompt to temp file (avoids command-line size limits)
@@ -360,7 +360,7 @@ export class LlmOrchestrator {
                 : {}),
         }));
 
-        const systemPrompt = buildSystemPrompt();
+        const systemPrompt = noTools ? buildNoToolsPrompt() : buildSystemPrompt();
         const system: Anthropic.MessageCreateParams['system'] = [
             {
                 type: 'text' as const,
@@ -510,7 +510,7 @@ export class LlmOrchestrator {
         const conv = this.conversations.get(conversationId);
         if (!conv) return;
 
-        const systemPrompt = buildSystemPrompt();
+        const systemPrompt = noTools ? buildNoToolsPrompt() : buildSystemPrompt();
         const messages: OpenAI.ChatCompletionMessageParam[] = [
             { role: 'system', content: systemPrompt },
         ];
@@ -525,7 +525,7 @@ export class LlmOrchestrator {
             }
         }
 
-        // Convert MCP tools to OpenAI function calling format
+        // Convert MCP tools to OpenAI function calling format (omit when noTools)
         const mcpTools = noTools ? [] : this.mcpHub.getAllTools();
         const tools: OpenAI.ChatCompletionTool[] = mcpTools.map(t => ({
             type: 'function' as const,
