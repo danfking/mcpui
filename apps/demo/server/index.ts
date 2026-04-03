@@ -462,8 +462,9 @@ async function start() {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
     const openaiBaseUrl = process.env.OPENAI_BASE_URL;
-    const modelName = process.env.OPENAI_MODEL || process.env.ANTHROPIC_MODEL || 'sonnet';
     const llmBackend = detectBackend();
+    const defaultModel = llmBackend === 'openai' ? 'qwen2.5:7b' : 'sonnet';
+    const modelName = process.env.OPENAI_MODEL || process.env.ANTHROPIC_MODEL || defaultModel;
 
     if (llmBackend === 'api' && !apiKey) {
         console.error('[burnish] ANTHROPIC_API_KEY required for api backend.');
