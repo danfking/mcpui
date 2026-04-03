@@ -1645,6 +1645,7 @@ function getEmptyState() {
                 <div class="burnish-suggestion-skeleton-pill"></div>
             </div>
             <div class="burnish-tool-shortcuts" id="tool-shortcuts"></div>
+            <div class="burnish-empty-hint" id="empty-hint"></div>
         </div>
     `;
 }
@@ -1712,6 +1713,11 @@ async function loadDynamicSuggestions(container) {
                     </button>
                 `).join('');
             }
+        }
+
+        const hintEl = container.querySelector('#empty-hint');
+        if (hintEl && servers.length > 0) {
+            hintEl.innerHTML = '<span class="burnish-hint-text">Try asking: "What tools do I have?" or "List my files"</span>';
         }
     } catch {
         const serverBtns = container.querySelector('#server-buttons');
