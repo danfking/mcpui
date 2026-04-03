@@ -163,13 +163,41 @@ function updateBreadcrumb() {
     if (!breadcrumb) return;
     const session = getActiveSession();
     if (!session) { breadcrumb.textContent = 'Dashboard'; return; }
-    const trail = [session.title || 'Dashboard'];
-    const lastNode = session.nodes[session.nodes.length - 1];
-    if (lastNode) {
-        const label = lastNode.promptDisplay || lastNode.prompt;
-        trail.push(label.length > 30 ? label.substring(0, 30) + '...' : label);
+
+    const truncate = (s, max = 25) => s.length > max ? s.substring(0, max) + '\u2026' : s;
+
+    // Build full ancestry path from root to active node
+    let pathNodes = [];
+    if (session.activeNodeId) {
+        pathNodes = getAncestryPath(session, session.activeNodeId);
     }
-    breadcrumb.textContent = trail.join(' > ');
+
+    // Build crumb segments: session title first, then each node in path
+    const segments = [];
+    segments.push({ label: truncate(session.title || 'Dashboard'), nodeId: null });
+    for (const node of pathNodes) {
+        const raw = node.promptDisplay || node.prompt || 'Untitled';
+        segments.push({ label: truncate(raw), nodeId: node.id });
+    }
+
+    // If path is longer than 4 segments, collapse middle: Title > ... > Parent > Active
+    let displaySegments = segments;
+    if (segments.length > 4) {
+        displaySegments = [
+            segments[0],
+            { label: '\u2026', nodeId: null, ellipsis: true },
+            segments[segments.length - 2],
+            segments[segments.length - 1],
+        ];
+    }
+
+    // Render as clickable spans
+    breadcrumb.innerHTML = displaySegments.map((seg, i) => {
+        const sep = i > 0 ? ' <span class="burnish-crumb-sep">&gt;</span> ' : '';
+        if (seg.ellipsis) return sep + '<span class="burnish-crumb burnish-crumb-ellipsis">\u2026</span>';
+        const attrs = seg.nodeId ? ` data-node-id="${escapeHtml(seg.nodeId)}"` : ' data-scroll-top="true"';
+        return sep + `<span class="burnish-crumb"${attrs}>${escapeHtml(seg.label)}</span>`;
+    }).join('');
 }
 
 // ── Session List Rendering ──
@@ -1042,6 +1070,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btn?.dataset.prompt) {
             promptInput.value = btn.dataset.prompt;
             handleSubmit(btn.dataset.label || undefined);
+        }
+    });
+
+    // ── Breadcrumb navigation ──
+    document.addEventListener('click', (e) => {
+        const crumb = e.target.closest('.burnish-crumb');
+        if (!crumb) return;
+        const nodeId = crumb.dataset.nodeId;
+        if (nodeId) {
+            const session = getActiveSession();
+            if (session) {
+                session.activeNodeId = nodeId;
+                scrollToNode(nodeId, true);
+                updateBreadcrumb();
+            }
+        } else if (crumb.dataset.scrollTop === 'true') {
+            const mainContent = document.getElementById('main-content');
+            if (mainContent) mainContent.scrollTo({ top: 0, behavior: 'smooth' });
         }
     });
 
