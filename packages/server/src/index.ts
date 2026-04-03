@@ -29,4 +29,4 @@ export {
     type GuardResult,
 } from './guards.js';
 
-export { buildSystemPrompt } from './prompt-template.js';
+export { buildSystemPrompt, buildNoToolsPrompt } from './prompt-template.js';
