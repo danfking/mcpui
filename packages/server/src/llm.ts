@@ -126,6 +126,7 @@ export class LlmOrchestrator {
     async *streamResponse(
         conversationId: string,
         requestModel?: string,
+        noTools?: boolean,
     ): AsyncGenerator<StreamChunk> {
         // For openai backend, allow any model; for others, validate against allowlist
         if (requestModel && this.backend !== 'openai' && !ALLOWED_MODELS.has(requestModel)) {
@@ -133,11 +134,11 @@ export class LlmOrchestrator {
         }
         const useModel = requestModel || this.model;
         if (this.backend === 'cli') {
-            yield* this.streamResponseCli(conversationId, useModel);
+            yield* this.streamResponseCli(conversationId, useModel, noTools);
         } else if (this.backend === 'openai') {
-            yield* this.streamResponseOpenai(conversationId, useModel);
+            yield* this.streamResponseOpenai(conversationId, useModel, noTools);
         } else {
-            yield* this.streamResponseApi(conversationId, useModel);
+            yield* this.streamResponseApi(conversationId, useModel, noTools);
         }
     }
 
@@ -148,6 +149,7 @@ export class LlmOrchestrator {
     private async *streamResponseCli(
         conversationId: string,
         useModel = this.model,
+        noTools?: boolean,
     ): AsyncGenerator<StreamChunk> {
         const conv = this.conversations.get(conversationId);
         if (!conv) return;
@@ -165,7 +167,7 @@ export class LlmOrchestrator {
 
             // Build allowed tools list from connected MCP servers
             const mcpTools = this.mcpHub.getAllTools();
-            const allowedToolNames = mcpTools.map(t => `mcp__${t.serverName}__${t.name}`);
+            const allowedToolNames = noTools ? [] : mcpTools.map(t => `mcp__${t.serverName}__${t.name}`);
 
             const mcpConfigPath = this.mcpConfigPath;
             if (!mcpConfigPath) throw new Error('mcpConfigPath required for CLI backend');
@@ -177,8 +179,8 @@ export class LlmOrchestrator {
                 '--include-partial-messages',
                 '--model', useModel,
                 '--system-prompt-file', tempFile,
-                '--mcp-config', mcpConfigPath,
-                '--strict-mcp-config',
+                // Only include MCP config and tools when tools are not explicitly disabled
+                ...(noTools ? [] : ['--mcp-config', mcpConfigPath, '--strict-mcp-config']),
                 '--tools', '',
                 '--setting-sources', 'user',
                 ...(allowedToolNames.length > 0
@@ -330,6 +332,7 @@ export class LlmOrchestrator {
     private async *streamResponseApi(
         conversationId: string,
         useModel = this.model,
+        noTools?: boolean,
     ): AsyncGenerator<StreamChunk> {
         if (!this.client) throw new Error('LLM not configured — call configure() first');
 
@@ -347,7 +350,7 @@ export class LlmOrchestrator {
             return { role: m.role, content: m.content };
         });
 
-        const mcpTools = this.mcpHub.getAllTools();
+        const mcpTools = noTools ? [] : this.mcpHub.getAllTools();
         const tools: Anthropic.Tool[] = mcpTools.map((t, i) => ({
             name: t.name,
             description: t.description,
@@ -500,6 +503,7 @@ export class LlmOrchestrator {
     private async *streamResponseOpenai(
         conversationId: string,
         useModel = this.model,
+        noTools?: boolean,
     ): AsyncGenerator<StreamChunk> {
         if (!this.openaiClient) throw new Error('OpenAI client not configured — call configure() first');
 
@@ -522,7 +526,7 @@ export class LlmOrchestrator {
         }
 
         // Convert MCP tools to OpenAI function calling format
-        const mcpTools = this.mcpHub.getAllTools();
+        const mcpTools = noTools ? [] : this.mcpHub.getAllTools();
         const tools: OpenAI.ChatCompletionTool[] = mcpTools.map(t => ({
             type: 'function' as const,
             function: {
