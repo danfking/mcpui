@@ -17,6 +17,7 @@ import { createInterface } from 'node:readline';
 import type { McpHub } from './mcp-hub.js';
 import type { ConversationStore, Conversation } from './conversation.js';
 import { buildSystemPrompt } from './prompt-template.js';
+import { isWriteTool } from './guards.js';
 
 export interface WorkflowStep {
     server: string;
@@ -622,15 +623,22 @@ export class LlmOrchestrator {
 
                 let resultContent: string;
                 try {
-                    yield { type: 'progress', stage: 'tool_call', detail: `Calling ${tc.name}…`, meta: { server } };
-                    console.log(`[llm-openai] Executing tool: ${tc.name}`);
+                    // Block write tools from being auto-called by the model
+                    if (isWriteTool(tc.name)) {
+                        console.log(`[llm-openai] Blocked write tool: ${tc.name}`);
+                        step.status = 'error';
+                        resultContent = `Tool "${tc.name}" is a write operation and requires user confirmation. Generate a burnish-form component instead so the user can review and submit.`;
+                    } else {
+                        yield { type: 'progress', stage: 'tool_call', detail: `Calling ${tc.name}…`, meta: { server } };
+                        console.log(`[llm-openai] Executing tool: ${tc.name}`);
 
-                    let args: Record<string, unknown> = {};
-                    try { args = JSON.parse(tc.arguments || '{}'); } catch { console.warn('[llm-openai] Failed to parse tool call arguments:', tc.arguments); }
+                        let args: Record<string, unknown> = {};
+                        try { args = JSON.parse(tc.arguments || '{}'); } catch { console.warn('[llm-openai] Failed to parse tool call arguments:', tc.arguments); }
 
-                    const result = await this.mcpHub.executeTool(tc.name, args);
-                    step.status = 'success';
-                    resultContent = typeof result === 'string' ? result : JSON.stringify(result);
+                        const result = await this.mcpHub.executeTool(tc.name, args);
+                        step.status = 'success';
+                        resultContent = typeof result === 'string' ? result : JSON.stringify(result);
+                    }
                 } catch (err) {
                     step.status = 'error';
                     resultContent = `Error: ${err instanceof Error ? err.message : String(err)}`;

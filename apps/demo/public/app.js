@@ -1695,7 +1695,7 @@ async function loadDynamicSuggestions(container) {
                 serverBtns.innerHTML = servers.map(s => {
                     const toolList = s.tools.slice(0, 15).map(t => t.name).join(', ');
                     const moreText = s.tools.length > 15 ? ` and ${s.tools.length - 15} more` : '';
-                    const prompt = `Show me what I can do with the ${s.name} server. Available tools: ${toolList}${moreText}. List each tool as a burnish-card. Use ONLY the tools listed above.`;
+                    const prompt = `You have access to a ${s.name} server with these operations: ${toolList}${moreText}. Generate a burnish-card for each operation showing its name and a brief description. Do NOT call any tools. Just output burnish-card HTML components describing what each operation does.`;
                     return `
                     <button class="burnish-suggestion burnish-suggestion-server" data-prompt="${escapeAttr(prompt)}" data-label="${escapeAttr(s.name)}">
                         ${escapeHtml(s.name)}
