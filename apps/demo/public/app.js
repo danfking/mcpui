@@ -69,26 +69,30 @@ let streamingNodeId = null;
 let drillDownToolHint = null;
 
 // Curated starter prompts per MCP server type
+// Each entry can have either `prompt` (LLM path) or `tool`+`args` (deterministic path)
 const STARTER_PROMPTS = {
     filesystem: [
-        { label: 'List my files', prompt: 'List the files and directories in my home folder' },
-        { label: 'Find large files', prompt: 'Find the 10 largest files in my home directory' },
+        { label: 'List my files', tool: 'list_directory', args: { path: '.' }, prompt: 'List the files and directories in my home folder' },
+        { label: 'Find large files', tool: 'search_files', args: { path: '.', pattern: '*' }, prompt: 'Find the 10 largest files in my home directory' },
         { label: 'Recent changes', prompt: 'Show files modified in the last 24 hours' },
     ],
     github: [
+        { label: 'Search repos', tool: 'search_repositories', args: { query: 'stars:>100' }, prompt: 'Search for my most popular repositories' },
         { label: 'Open issues', prompt: 'Show all open issues in my repositories' },
         { label: 'Recent PRs', prompt: 'List recent pull requests across my repos' },
-        { label: 'Search repos', prompt: 'Search for my most popular repositories' },
     ],
     // Generic fallback for unknown servers
     _default: [
-        { label: 'Available tools', prompt: 'What tools do I have available?' },
+        { label: 'Available tools', prompt: null }, // Falls through to server button behavior
         { label: 'Get started', prompt: 'Show me what I can do with the connected services' },
     ],
 };
 
 // Cache of tool schemas keyed by tool name (populated from /api/servers)
 const toolSchemaCache = {};
+
+// Cache of server data from /api/servers (for deterministic rendering)
+let cachedServers = null;
 
 // ── Persistence (delegated to SessionStore) ──
 
@@ -1147,7 +1151,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Suggestion buttons
     document.addEventListener('click', (e) => {
         const btn = e.target.closest('.burnish-suggestion');
-        if (btn?.dataset.prompt) {
+        if (!btn) return;
+
+        // Deterministic tool execution for starter prompts with data-tool
+        const starterTool = btn.dataset.tool;
+        if (starterTool) {
+            const args = JSON.parse(btn.dataset.args || '{}');
+            executeToolDirect(starterTool, args, btn.dataset.label || starterTool);
+            return;
+        }
+
+        // Deterministic server button — render tool listing without LLM
+        if (btn.dataset.noTools === 'true' && btn.classList.contains('burnish-suggestion-server')) {
+            const serverName = btn.dataset.label;
+            const serverData = cachedServers?.find(s => s.name === serverName);
+            if (serverData && serverData.tools.length > 0) {
+                renderDeterministicToolListing(serverName, serverData.tools);
+                return;
+            }
+        }
+
+        if (btn.dataset.prompt) {
             promptInput.value = btn.dataset.prompt;
             const noTools = btn.dataset.noTools === 'true';
             handleSubmit(btn.dataset.label || undefined, noTools);
@@ -1252,21 +1276,41 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     container.addEventListener('burnish-card-action', (e) => {
         const { title, status, itemId } = e.detail || {};
-        if (title) {
-            if (streamOrchestrator.isStreaming) {
-                streamOrchestrator.cancel();
-                submitBtn.classList.remove('cancel');
-                submitBtn.innerHTML = ICON_SEND;
-            }
-            // Branch from the node containing this card
-            const nodeEl = e.target.closest('.burnish-node');
-            if (nodeEl?.dataset?.nodeId) branchFromNodeId = nodeEl.dataset.nodeId;
-            // Track tool hint for fallback form generation
-            const looksLikeTool = itemId && (itemId.includes('__') || itemId.includes('mcp_'));
-            drillDownToolHint = looksLikeTool ? { toolName: itemId, title } : null;
-            promptInput.value = getDrillDownPrompt(title, status, itemId);
-            handleSubmit(title);
+        if (!title) return;
+
+        if (streamOrchestrator.isStreaming) {
+            streamOrchestrator.cancel();
+            submitBtn.classList.remove('cancel');
+            submitBtn.innerHTML = ICON_SEND;
         }
+        // Branch from the node containing this card
+        const nodeEl = e.target.closest('.burnish-node');
+        if (nodeEl?.dataset?.nodeId) branchFromNodeId = nodeEl.dataset.nodeId;
+
+        // Deterministic path: if itemId matches a known tool, render form or execute directly
+        const schema = toolSchemaCache[itemId];
+        if (schema) {
+            const hasAnyParams = schema.properties && Object.keys(schema.properties).length > 0;
+
+            if (hasAnyParams) {
+                // Show form from schema — no LLM needed
+                const formHtml = generateFallbackForm(itemId, schema);
+                if (formHtml) {
+                    renderDeterministicNode(title, formHtml);
+                    return;
+                }
+            } else {
+                // No params needed — execute directly
+                executeToolDirect(itemId, {}, title);
+                return;
+            }
+        }
+
+        // Fall through to LLM path for non-tool cards
+        const looksLikeTool = itemId && (itemId.includes('__') || itemId.includes('mcp_'));
+        drillDownToolHint = looksLikeTool ? { toolName: itemId, title } : null;
+        promptInput.value = getDrillDownPrompt(title, status, itemId);
+        handleSubmit(title);
     });
 
     // ── Form submission (direct execution for read tools, LLM for write tools) ──
@@ -1282,7 +1326,37 @@ document.addEventListener('DOMContentLoaded', async () => {
         const bareToolName = toolId.replace(/^mcp__\w+__/, '');
         const isWrite = /^(create|update|delete|remove|push|write|edit|move|fork|merge|add|set|close|lock|assign)/i.test(bareToolName);
 
-        if (!isWrite) {
+        if (isWrite) {
+            // Write tools: confirm then execute directly with confirmed flag
+            const toolShortName = (toolId.split('__').pop() || toolId).replace(/_/g, ' ');
+            if (!confirm(`Execute write operation: ${toolShortName}?`)) return;
+
+            try {
+                const res = await fetch('/api/tools/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ toolName: toolId, args: values, confirmed: true }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Execution failed');
+
+                const keyValues = Object.entries(values)
+                    .filter(([, v]) => v && String(v).trim())
+                    .slice(0, 3)
+                    .map(([, v]) => v)
+                    .join(', ');
+                const displayLabel = keyValues ? `${toolShortName}: ${keyValues}` : toolShortName;
+                const resultHtml = buildResultHtml(data.result, displayLabel);
+                renderDeterministicNode(displayLabel, resultHtml);
+                return;
+            } catch (err) {
+                console.error('Write tool execution failed:', err.message);
+                renderDeterministicNode(toolShortName, `<burnish-card title="Error" status="error" body="${escapeAttr(err.message)}"></burnish-card>`);
+                return;
+            }
+        }
+
+        if (true) {
             // Direct execution — bypass LLM entirely for read tools
             try {
                 const res = await fetch('/api/tools/execute', {
@@ -1377,7 +1451,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // Write tools or fallback: go through LLM chat (existing behavior)
+        // Fallback: go through LLM chat if direct execution failed
         const params = Object.entries(values)
             .filter(([, v]) => v && String(v).trim())
             .map(([k, v]) => `${k}="${v}"`)
@@ -1446,6 +1520,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.state?.nodeId) scrollToNode(e.state.nodeId);
     });
 
+    // ── LLM availability check ──
+    fetch('/api/models').then(r => r.json()).then(data => {
+        window._llmAvailable = data.models && data.models.length > 0;
+    }).catch(() => { window._llmAvailable = false; });
+
     // ── Submit handler ──
     async function handleSubmit(displayLabel, noTools) {
         const prompt = promptInput.value.trim();
@@ -1458,6 +1537,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             }, { once: true });
             return;
         }
+        // If no LLM backend and this isn't a deterministic path, show message
+        if (!window._llmAvailable && !noTools) {
+            renderDeterministicNode(displayLabel || prompt.substring(0, 40),
+                `<burnish-card title="LLM not configured" status="warning" body="${escapeAttr('Free-text queries require an LLM. Use the tool buttons above for deterministic browsing, or configure a model in the dropdown.')}"></burnish-card>`
+            );
+            promptInput.value = '';
+            promptInput.style.height = '';
+            return;
+        }
+
         promptInput.value = '';
         promptInput.style.height = '';
 
@@ -1674,7 +1763,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await saveState();
 
                 // Auto-title: after first node completes, request an LLM-generated title
-                if (session.nodes.length === 1) {
+                // if available, otherwise keep the prompt-based title from node creation
+                if (session.nodes.length === 1 && window._llmAvailable) {
                     fetch('/api/title', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1836,10 +1926,170 @@ function getEmptyState() {
     `;
 }
 
+// ── Deterministic Rendering Helpers (no LLM required) ──
+
+function renderDeterministicToolListing(serverName, tools) {
+    const nodeId = generateId();
+    const session = getActiveSession();
+    if (!session) return;
+
+    // Group tools by verb prefix
+    const groups = {};
+    for (const tool of tools) {
+        const verb = tool.name.split(/[_\-]/)[0] || 'other';
+        if (!groups[verb]) groups[verb] = [];
+        groups[verb].push(tool);
+    }
+
+    // Build stat-bar
+    const statItems = Object.entries(groups).map(([verb, items]) => ({
+        label: verb.charAt(0).toUpperCase() + verb.slice(1),
+        value: String(items.length),
+        color: items.some(t => /^(create|update|delete|push|write|edit|move)/.test(t.name)) ? 'warning' : 'info',
+    }));
+    let html = `<burnish-stat-bar items='${escapeAttr(JSON.stringify(statItems))}'></burnish-stat-bar>`;
+
+    // Build sections with cards
+    for (const [verb, items] of Object.entries(groups)) {
+        const label = verb.charAt(0).toUpperCase() + verb.slice(1) + ' Operations';
+        html += `<burnish-section label="${escapeAttr(label)}" count="${items.length}" status="info">`;
+        for (const tool of items) {
+            html += `<burnish-card title="${escapeAttr(tool.name)}" status="info" body="${escapeAttr(tool.description || '')}" item-id="${escapeAttr(tool.name)}"></burnish-card>`;
+        }
+        html += `</burnish-section>`;
+    }
+
+    const parentId = session.activeNodeId || (session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null);
+    const node = {
+        id: nodeId,
+        prompt: serverName,
+        promptDisplay: serverName,
+        response: html,
+        type: 'components',
+        timestamp: Date.now(),
+        parentId,
+        children: [],
+        collapsed: false,
+        tags: Object.keys(groups),
+        summary: `${serverName}: ${tools.length} tools`,
+    };
+
+    if (parentId) {
+        const parent = session.nodes.find(n => n.id === parentId);
+        if (parent) parent.children.push(nodeId);
+    }
+    session.nodes.push(node);
+    session.activeNodeId = nodeId;
+    session.updatedAt = Date.now();
+
+    if (!session.title || session.title === 'New conversation') {
+        session.title = `${serverName} tools`;
+    }
+
+    // Remove empty state if present
+    const emptyState = document.getElementById('main-content')?.querySelector('.burnish-empty-state');
+    if (emptyState) emptyState.remove();
+
+    renderMainContent();
+    updateBreadcrumb();
+    renderSessionList();
+    saveState();
+}
+
+function renderDeterministicNode(label, html) {
+    const nodeId = generateId();
+    const session = getActiveSession();
+    if (!session) return;
+
+    const parentId = branchFromNodeId || session.activeNodeId || (session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null);
+    const node = {
+        id: nodeId,
+        prompt: label,
+        promptDisplay: label,
+        response: html,
+        type: 'components',
+        timestamp: Date.now(),
+        parentId,
+        children: [],
+        collapsed: false,
+        tags: [],
+        summary: label,
+    };
+
+    if (parentId) {
+        const parent = session.nodes.find(n => n.id === parentId);
+        if (parent) parent.children.push(nodeId);
+    }
+    session.nodes.push(node);
+    session.activeNodeId = nodeId;
+    session.updatedAt = Date.now();
+
+    if (!session.title || session.title === 'New conversation') {
+        session.title = label.substring(0, 60);
+    }
+
+    // Remove empty state if present
+    const container = document.getElementById('main-content');
+    const emptyState = container?.querySelector('.burnish-empty-state');
+    if (emptyState) emptyState.remove();
+
+    renderMainContent();
+    updateBreadcrumb();
+    renderSessionList();
+    saveState();
+    branchFromNodeId = null;
+}
+
+async function executeToolDirect(toolName, args, label) {
+    try {
+        const res = await fetch('/api/tools/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ toolName, args }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Execution failed');
+
+        const resultHtml = buildResultHtml(data.result, label);
+        renderDeterministicNode(label, resultHtml);
+    } catch (err) {
+        renderDeterministicNode(label, `<burnish-card title="Error" status="error" body="${escapeAttr(err.message)}"></burnish-card>`);
+    }
+}
+
+function buildResultHtml(result, label) {
+    try {
+        const parsed = JSON.parse(result);
+        if (Array.isArray(parsed)) {
+            if (parsed.length > 0 && typeof parsed[0] === 'object') {
+                // Array of objects -> table
+                const keys = Object.keys(parsed[0]);
+                const cols = keys.map(k => ({ key: k, label: k }));
+                return `<burnish-table title="${escapeAttr(label)}" columns='${escapeAttr(JSON.stringify(cols))}' rows='${escapeAttr(JSON.stringify(parsed.slice(0, 50)))}'></burnish-table>`;
+            } else {
+                // Array of primitives -> cards
+                return parsed.map(item => `<burnish-card title="${escapeAttr(String(item))}" status="info"></burnish-card>`).join('');
+            }
+        } else if (typeof parsed === 'object' && parsed !== null) {
+            // Single object -> card with meta
+            const meta = Object.entries(parsed).slice(0, 10).map(([k, v]) => ({ label: k, value: String(v) }));
+            return `<burnish-card title="${escapeAttr(label)}" status="success" meta='${escapeAttr(JSON.stringify(meta))}'></burnish-card>`;
+        } else {
+            return `<burnish-card title="${escapeAttr(label)}" status="success" body="${escapeAttr(String(parsed))}"></burnish-card>`;
+        }
+    } catch {
+        // Plain text result
+        return `<burnish-card title="${escapeAttr(label)}" status="success" body="${escapeAttr(result.substring(0, 500))}"></burnish-card>`;
+    }
+}
+
 async function loadDynamicSuggestions(container) {
     try {
         const res = await fetch('/api/servers');
         const { servers } = await res.json();
+
+        // Cache servers for deterministic rendering
+        cachedServers = servers;
 
         // Populate tool schema cache for fallback form generation
         for (const s of servers) {
@@ -1918,11 +2168,23 @@ async function loadDynamicSuggestions(container) {
             }
             const limited = starters.slice(0, 6);
             if (limited.length > 0) {
-                starterSection.innerHTML = limited.map(s => `
-                    <button class="burnish-suggestion" data-prompt="${escapeAttr(s.prompt)}" data-label="${escapeAttr(s.label)}">
-                        ${escapeHtml(s.label)}
-                    </button>
-                `).join('');
+                starterSection.innerHTML = limited.map(s => {
+                    // Resolve tool name to full MCP-prefixed name if needed
+                    let toolAttr = '';
+                    let argsAttr = '';
+                    if (s.tool) {
+                        // Find the full tool name from cache (may be prefixed with mcp__server__)
+                        const fullToolName = Object.keys(toolSchemaCache).find(k => k.endsWith(s.tool)) || s.tool;
+                        toolAttr = ` data-tool="${escapeAttr(fullToolName)}"`;
+                        argsAttr = ` data-args="${escapeAttr(JSON.stringify(s.args || {}))}"`;
+                    }
+                    const promptAttr = s.prompt ? ` data-prompt="${escapeAttr(s.prompt)}"` : '';
+                    return `
+                        <button class="burnish-suggestion"${promptAttr}${toolAttr}${argsAttr} data-label="${escapeAttr(s.label)}">
+                            ${escapeHtml(s.label)}
+                        </button>
+                    `;
+                }).join('');
             }
         }
 

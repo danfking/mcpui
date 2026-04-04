@@ -70,8 +70,10 @@ function validateUuid(value: string, fieldName: string): string | null {
 }
 
 /** Auto-detect which LLM backend to use based on environment variables. */
-function detectBackend(): 'api' | 'cli' | 'openai' {
-    if (process.env.LLM_BACKEND) return process.env.LLM_BACKEND as 'api' | 'cli' | 'openai';
+function detectBackend(): 'api' | 'cli' | 'openai' | 'none' {
+    const explicit = process.env.LLM_BACKEND;
+    if (explicit === 'none') return 'none';
+    if (explicit) return explicit as 'api' | 'cli' | 'openai';
     if (process.env.ANTHROPIC_API_KEY) return 'api';
     if (process.env.OPENAI_API_KEY || process.env.OPENAI_BASE_URL) return 'openai';
     return 'cli';
@@ -214,6 +216,9 @@ app.use('/api/lookup', async (c, next) => {
 // --- API Routes ---
 
 app.post('/api/chat', async (c) => {
+    if (activeBackend === 'none') {
+        return c.json({ error: 'No LLM configured. Use tool buttons for deterministic browsing.' }, 400);
+    }
     try {
         let body: { prompt: string; conversationId?: string; model?: string; noTools?: boolean };
         try {
@@ -333,7 +338,7 @@ app.get('/api/servers', (c) => {
 });
 
 app.post('/api/tools/execute', async (c) => {
-    let body: { toolName: string; args: Record<string, unknown> };
+    let body: { toolName: string; args: Record<string, unknown>; confirmed?: boolean };
     try {
         body = await c.req.json();
     } catch {
@@ -351,9 +356,9 @@ app.post('/api/tools/execute', async (c) => {
         return c.json({ error: `Tool "${body.toolName}" not found` }, 404);
     }
 
-    // Block write tools from direct execution — they should go through LLM with confirmation
-    if (isWriteTool(body.toolName)) {
-        return c.json({ error: 'Write tools require form submission through the chat interface' }, 403);
+    // Write tools require explicit confirmation from the frontend
+    if (isWriteTool(body.toolName) && !body.confirmed) {
+        return c.json({ error: 'Write tool requires confirmation', requiresConfirmation: true }, 403);
     }
 
     try {
@@ -366,6 +371,10 @@ app.post('/api/tools/execute', async (c) => {
 });
 
 app.get('/api/models', async (c) => {
+    if (activeBackend === 'none') {
+        return c.json({ models: [], current: null, backend: 'none' });
+    }
+
     let available: { id: string; name: string }[] = [];
 
     if (activeBackend === 'openai') {
@@ -392,6 +401,10 @@ app.get('/api/models', async (c) => {
 });
 
 app.post('/api/title', async (c) => {
+    if (activeBackend === 'none') {
+        // No LLM — return null so the frontend uses prompt-based title
+        return c.json({ title: null });
+    }
     try {
         let body: { prompt: string; response: string };
         try {
@@ -433,6 +446,9 @@ function evictLookupCache(): void {
 }
 
 app.post('/api/lookup', async (c) => {
+    if (activeBackend === 'none') {
+        return c.json({ results: [], error: 'No LLM configured for lookups' });
+    }
     try {
         let body: { prompt: string };
         try {
@@ -548,10 +564,13 @@ async function start() {
     const defaultModel = llmBackend === 'openai' ? 'qwen2.5:7b' : 'sonnet';
     const modelName = process.env.OPENAI_MODEL || process.env.ANTHROPIC_MODEL || defaultModel;
 
-    if (llmBackend === 'api' && !apiKey) {
+    if (llmBackend === 'none') {
+        console.log('[burnish] Running in no-model mode. Only deterministic tool execution available.');
+    } else if (llmBackend === 'api' && !apiKey) {
         console.error('[burnish] ANTHROPIC_API_KEY required for api backend.');
         console.error('[burnish] Set LLM_BACKEND=cli to use your Claude Code subscription instead.');
         console.error('[burnish] Or set LLM_BACKEND=openai with OPENAI_BASE_URL for local models.');
+        console.error('[burnish] Or set LLM_BACKEND=none for deterministic browsing without any model.');
         process.exit(1);
     }
 
@@ -606,14 +625,16 @@ async function start() {
     activeModelName = modelName;
     activeBackend = llmBackend;
 
-    llm.configure({
-        backend: llmBackend,
-        apiKey: llmBackend === 'openai' ? (openaiKey || undefined) : apiKey,
-        model: modelName,
-        cwd: resolve(__dirname, '..'),
-        mcpConfigPath: configPath,
-        openaiBaseUrl,
-    });
+    if (llmBackend !== 'none') {
+        llm.configure({
+            backend: llmBackend as 'api' | 'cli' | 'openai',
+            apiKey: llmBackend === 'openai' ? (openaiKey || undefined) : apiKey,
+            model: modelName,
+            cwd: resolve(__dirname, '..'),
+            mcpConfigPath: configPath,
+            openaiBaseUrl,
+        });
+    }
 
     serve({ fetch: app.fetch, port }, () => {
         console.log(`[burnish] Demo server running at http://localhost:${port}`);
