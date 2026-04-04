@@ -187,6 +187,8 @@ app.post('/api/tools/execute', async (c) => {
 });
 
 // --- Static Files ---
+// Cache-busting: use startup timestamp so all assets refresh on server restart
+const CACHE_BUSTER = `v=${Date.now()}`;
 
 const repoRoot = resolve(__dirname, '../../..');
 const demoRoot = resolve(__dirname, '..');
@@ -199,6 +201,8 @@ app.get('/app/:file{.+}', async (c) => {
     try {
         const content = await readFile(filePath, 'utf-8');
         c.header('Content-Type', 'application/javascript');
+        c.header('Cache-Control', 'no-cache, must-revalidate');
+        c.header('ETag', CACHE_BUSTER);
         return c.body(content);
     } catch {
         return c.text('Not found', 404);
@@ -213,6 +217,8 @@ app.get('/renderer/:file{.+}', async (c) => {
     try {
         const content = await readFile(filePath, 'utf-8');
         c.header('Content-Type', 'application/javascript');
+        c.header('Cache-Control', 'no-cache, must-revalidate');
+        c.header('ETag', CACHE_BUSTER);
         return c.body(content);
     } catch {
         return c.text('Not found', 404);
@@ -226,6 +232,8 @@ app.get('/components/:file', async (c) => {
     try {
         const content = await readFile(filePath, 'utf-8');
         c.header('Content-Type', 'application/javascript');
+        c.header('Cache-Control', 'no-cache, must-revalidate');
+        c.header('ETag', CACHE_BUSTER);
         return c.body(content);
     } catch {
         return c.text('Not found', 404);
@@ -238,9 +246,20 @@ app.get('/tokens.css', async (c) => {
         'utf-8',
     );
     c.header('Content-Type', 'text/css');
+    c.header('Cache-Control', 'no-cache, must-revalidate');
+    c.header('ETag', CACHE_BUSTER);
     return c.body(css);
 });
 
+// Serve public files with cache-busting headers
+app.use('/*', async (c, next) => {
+    await next();
+    if (c.res.headers.get('Content-Type')?.includes('javascript') ||
+        c.res.headers.get('Content-Type')?.includes('css')) {
+        c.res.headers.set('Cache-Control', 'no-cache, must-revalidate');
+        c.res.headers.set('ETag', CACHE_BUSTER);
+    }
+});
 app.use('/*', serveStatic({ root: resolve(demoRoot, 'public') }));
 
 // --- Startup ---
