@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 
 export class BurnishCard extends LitElement {
     static properties = {
@@ -73,13 +74,21 @@ export class BurnishCard extends LitElement {
         .card-body {
             padding: 0 var(--burnish-space-lg, 16px) var(--burnish-space-md, 12px);
             font-size: var(--burnish-font-size-base, 13px); color: var(--burnish-text-secondary);
-            line-height: 1.4;
+            line-height: 1.5;
             overflow-wrap: anywhere; word-break: break-word;
-            display: -webkit-box;
-            -webkit-line-clamp: 5;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
+            max-height: 120px;
+            overflow-y: auto;
         }
+        .card-body h1, .card-body h2, .card-body h3, .card-body h4 {
+            font-size: 13px; font-weight: 600; margin: 8px 0 4px; color: var(--burnish-text, #1f2937);
+        }
+        .card-body p { margin: 0 0 6px; }
+        .card-body code {
+            background: var(--burnish-surface-alt, #f5f6f8); padding: 1px 4px;
+            border-radius: 3px; font-size: 12px;
+        }
+        .card-body ul, .card-body ol { margin: 4px 0; padding-left: 18px; }
+        .card-body a { color: var(--burnish-link, #3b82f6); }
         .card-meta {
             padding: var(--burnish-space-sm, 8px) var(--burnish-space-lg, 16px);
             border-top: 1px solid var(--burnish-border-light, #f3f4f6);
@@ -162,6 +171,25 @@ export class BurnishCard extends LitElement {
         }
     }
 
+    private _renderMarkdown(text: string): string {
+        // Simple markdown → HTML (no external library needed)
+        return text
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') // escape HTML
+            .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+            .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+            .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+            .replace(/^- (.+)$/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+            .replace(/\n{2,}/g, '</p><p>')
+            .replace(/\n/g, '<br>')
+            .replace(/^/, '<p>').replace(/$/, '</p>')
+            .replace(/<p><\/p>/g, '');
+    }
+
     private _isUrl(text: string): boolean {
         return /^https?:\/\//.test(text) || /^[\w.-]+\.\w+\//.test(text);
     }
@@ -203,7 +231,7 @@ export class BurnishCard extends LitElement {
                     <span class="card-title">${this.title}</span>
                     <span class="card-badge" data-status="${statusColor}">${badgeText}</span>
                 </div>
-                ${this.body ? html`<div class="card-body">${this.body}</div>` : ''}
+                ${this.body ? html`<div class="card-body">${unsafeHTML(this._renderMarkdown(this.body))}</div>` : ''}
                 ${(() => {
                     const regularMeta = metaData.filter(m => !this._isUrl(m.value));
                     const linkMeta = metaData.filter(m => this._isUrl(m.value));

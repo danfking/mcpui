@@ -1018,8 +1018,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             .slice(0, 12)
             .map(([k, v]) => ({ label: k.replace(/_/g, ' '), value: String(v) }));
 
-        const rawBody = row.description || row.body || '';
-        const body = stripMarkdown(String(rawBody)).substring(0, 300);
+        const body = String(row.description || row.body || '').substring(0, 500);
         let html = `<burnish-card title="${escapeAttr(title)}" status="info" body="${escapeAttr(body)}" meta='${escapeAttr(JSON.stringify(meta))}'></burnish-card>`;
 
         const actions = generateContextualActionsForItem(row);
