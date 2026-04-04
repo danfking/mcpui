@@ -935,10 +935,53 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // For non-tool cards, show info message
+        // Try parsing itemId as JSON (data item from cards view)
+        try {
+            const item = itemId ? JSON.parse(itemId) : null;
+            if (item && typeof item === 'object') {
+                // Render detail card with contextual actions for this item
+                const meta = Object.entries(item)
+                    .filter(([, v]) => typeof v !== 'object' && v != null && String(v).length < 200)
+                    .slice(0, 8)
+                    .map(([k, v]) => ({ label: k.replace(/_/g, ' '), value: String(v) }));
+                const itemTitle = item.full_name || item.name || item.title || title;
+                let detailHtml = `<burnish-card title="${escapeAttr(itemTitle)}" status="info" body="${escapeAttr(item.description || item.body || '')}" meta='${escapeAttr(JSON.stringify(meta))}'></burnish-card>`;
+                const actions = generateContextualActionsForItem(item);
+                if (actions.length > 0) {
+                    detailHtml += `<burnish-actions actions='${escapeAttr(JSON.stringify(actions))}'></burnish-actions>`;
+                }
+                renderDeterministicNode(itemTitle, detailHtml);
+                return;
+            }
+        } catch { /* not JSON */ }
+
+        // Fallback for non-tool, non-data cards
         renderDeterministicNode(title,
             '<burnish-card title="Use the tools above" status="info" body="Select a server, browse its tools, and fill forms to execute them directly."></burnish-card>'
         );
+    });
+
+    // ── View mode switcher (Table / Cards / JSON) ──
+    container.addEventListener('click', (e) => {
+        const btn = e.target.closest('.burnish-view-btn');
+        if (!btn) return;
+        const viewType = btn.dataset.view;
+        const dataId = btn.dataset.target;
+        const data = window._viewData?.[dataId];
+        if (!data) return;
+
+        btn.closest('.burnish-view-switcher').querySelectorAll('.burnish-view-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const contentEl = document.querySelector(`.burnish-view-content[data-view-id="${dataId}"]`);
+        if (!contentEl) return;
+
+        let html;
+        if (viewType === 'cards') html = renderCardsView(data.parsed, data.sourceToolName);
+        else if (viewType === 'json') html = renderJsonView(data.parsed);
+        else html = renderTableView(data.parsed, data.label);
+
+        contentEl.innerHTML = DOMPurify.sanitize(html, PURIFY_CONFIG);
     });
 
     // ── Table row explore click ──
@@ -1445,31 +1488,80 @@ function generateContextualActionsForItem(item) {
     return actions.slice(0, 6);
 }
 
+// ── View switching data store ──
+window._viewData = window._viewData || {};
+
+function renderViewSwitcher(dataId, activeView, count) {
+    return `<div class="burnish-view-switcher" data-view-id="${dataId}">
+        <button class="burnish-view-btn ${activeView === 'cards' ? 'active' : ''}" data-view="cards" data-target="${dataId}">Cards</button>
+        <button class="burnish-view-btn ${activeView === 'table' ? 'active' : ''}" data-view="table" data-target="${dataId}">Table</button>
+        <button class="burnish-view-btn ${activeView === 'json' ? 'active' : ''}" data-view="json" data-target="${dataId}">JSON</button>
+        <span class="burnish-view-count">${count} items</span>
+    </div>`;
+}
+
+function renderCardsView(items, sourceToolName) {
+    let html = '';
+    for (const item of items.slice(0, 50)) {
+        const title = item.full_name || item.name || item.title || item.login || 'Item';
+        const body = item.description || item.body || item.message || '';
+        const meta = Object.entries(item)
+            .filter(([k, v]) => typeof v !== 'object' && v != null
+                && !['description','body','message','name','full_name','title','login'].includes(k)
+                && String(v).length < 100)
+            .slice(0, 4)
+            .map(([k, v]) => ({ label: k.replace(/_/g, ' '), value: String(v) }));
+        html += `<burnish-card title="${escapeAttr(title)}" status="info"
+            body="${escapeAttr(body.substring(0, 200))}"
+            meta='${escapeAttr(JSON.stringify(meta))}'
+            item-id='${escapeAttr(JSON.stringify(item))}'></burnish-card>`;
+    }
+    return html;
+}
+
+function renderTableView(items, label) {
+    const allKeys = Object.keys(items[0]);
+    // Use ALL keys for table (no column limit) — table scrolls horizontally
+    const cols = allKeys.filter(k => {
+        // Skip deeply nested objects
+        const sample = items[0][k];
+        return typeof sample !== 'object' || sample === null;
+    }).map(k => ({ key: k, label: k.replace(/_/g, ' ') }));
+    const rows = items.slice(0, 50).map(item => {
+        const row = {};
+        for (const col of cols) {
+            const val = item[col.key];
+            row[col.key] = val == null ? ''
+                : typeof val === 'object' ? (val.login || val.name || val.label || val.title || JSON.stringify(val).substring(0, 60))
+                : String(val);
+        }
+        return row;
+    });
+    return `<burnish-table title="${escapeAttr(label)}" columns='${escapeAttr(JSON.stringify(cols))}' rows='${escapeAttr(JSON.stringify(rows))}'></burnish-table>`;
+}
+
+function renderJsonView(items) {
+    return `<pre class="burnish-json-view">${escapeHtml(JSON.stringify(items, null, 2).substring(0, 50000))}</pre>`;
+}
+
 function renderParsedResult(parsed, label, sourceToolName) {
     if (Array.isArray(parsed)) {
         if (parsed.length === 0) {
             return `<burnish-card title="${escapeAttr(label)}" status="muted" body="No results"></burnish-card>`;
         }
         if (typeof parsed[0] === 'object') {
-            const allKeys = Object.keys(parsed[0]);
-            const preferred = ['name','full_name','title','login','description','language',
-                'stargazers_count','stars','state','status','path','size','type',
-                'html_url','created_at','updated_at','message','body'];
-            const selected = preferred.filter(k => allKeys.includes(k)).slice(0, 6);
-            const cols = (selected.length > 0 ? selected : allKeys.slice(0, 6))
-                .map(k => ({ key: k, label: k.replace(/_/g, ' ') }));
-            const rows = parsed.slice(0, 50).map(item => {
-                const row = {};
-                for (const col of cols) {
-                    const val = item[col.key];
-                    row[col.key] = val == null ? ''
-                        : typeof val === 'object' ? (val.login || val.name || val.label || val.title || JSON.stringify(val).substring(0, 60))
-                        : String(val);
-                }
-                return row;
-            });
-            let html = `<burnish-stat-bar items='${escapeAttr(JSON.stringify([{label:"Results",value:String(parsed.length),color:"info"}]))}'></burnish-stat-bar>` +
-                `<burnish-table title="${escapeAttr(label)}" columns='${escapeAttr(JSON.stringify(cols))}' rows='${escapeAttr(JSON.stringify(rows))}'></burnish-table>`;
+            // Store data for view switching
+            const dataId = 'vd-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+            window._viewData[dataId] = { parsed, label, sourceToolName };
+
+            // Default: cards view (always visible, drillable)
+            const defaultView = 'cards';
+            let html = `<burnish-stat-bar items='${escapeAttr(JSON.stringify([{label:"Results",value:String(parsed.length),color:"info"}]))}'></burnish-stat-bar>`;
+            html += renderViewSwitcher(dataId, defaultView, parsed.length);
+            html += `<div class="burnish-view-content" data-view-id="${dataId}">`;
+            html += renderCardsView(parsed, sourceToolName);
+            html += '</div>';
+
             const actions = generateContextualActions(parsed, sourceToolName);
             if (actions.length > 0) {
                 html += `<burnish-actions actions='${escapeAttr(JSON.stringify(actions))}'></burnish-actions>`;
