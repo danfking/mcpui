@@ -1402,6 +1402,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         handleSubmit(title);
     });
 
+    // ── Table row explore click ──
+    container.addEventListener('burnish-table-row-click', (e) => {
+        const { row } = e.detail || {};
+        if (!row) return;
+
+        const title = row.full_name || row.name || row.title || row.login || 'Details';
+
+        // Build detail card from row data (filter out objects and long strings)
+        const meta = Object.entries(row)
+            .filter(([k, v]) => v != null && typeof v !== 'object' && String(v).length < 200 && k !== '__itemIndex')
+            .slice(0, 8)
+            .map(([k, v]) => ({ label: k.replace(/_/g, ' '), value: String(v) }));
+
+        let html = `<burnish-card title="${escapeAttr(title)}" status="info" body="${escapeAttr(row.description || row.body || '')}" meta='${escapeAttr(JSON.stringify(meta))}'></burnish-card>`;
+
+        // Generate contextual actions for this specific item
+        const actions = generateContextualActionsForItem(row);
+        if (actions.length > 0) {
+            html += `<burnish-actions actions='${escapeAttr(JSON.stringify(actions))}'></burnish-actions>`;
+        }
+
+        const nodeEl = e.target.closest('.burnish-node');
+        if (nodeEl?.dataset?.nodeId) branchFromNodeId = nodeEl.dataset.nodeId;
+
+        renderDeterministicNode(title, html);
+    });
+
     // ── Form submission (direct execution for read tools, LLM for write tools) ──
     container.addEventListener('burnish-form-submit', async (e) => {
         const { toolId, values } = e.detail || {};
@@ -2257,6 +2284,60 @@ function generateContextualActions(resultData, sourceToolName) {
         if (a.action !== 'read' && b.action === 'read') return 1;
         return 0;
     });
+    return actions.slice(0, 6);
+}
+
+function generateContextualActionsForItem(item) {
+    // Ensure cachedServers
+    if (!cachedServers) {
+        try {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', '/api/servers', false);
+            xhr.send();
+            if (xhr.status === 200) cachedServers = JSON.parse(xhr.responseText).servers;
+        } catch { /* ignore */ }
+    }
+    if (!cachedServers) return [];
+
+    const actions = [];
+
+    for (const server of cachedServers) {
+        for (const tool of server.tools) {
+            const props = tool.inputSchema?.properties || {};
+            const args = {};
+            let matchCount = 0;
+
+            // Auto-fill params from item fields
+            if (props.owner && item.full_name && item.full_name.includes('/')) {
+                args.owner = item.full_name.split('/')[0];
+                matchCount++;
+            }
+            if (props.repo && item.full_name && item.full_name.includes('/')) {
+                args.repo = item.full_name.split('/')[1];
+                matchCount++;
+            }
+            if (props.path && item.path) {
+                args.path = item.path;
+                matchCount++;
+            }
+            if (props.issue_number && item.number) {
+                args.issue_number = item.number;
+                matchCount++;
+            }
+
+            if (matchCount >= 1) {
+                const isWrite = /^(create|update|delete|push|write|edit|move|fork|merge|add)/.test(tool.name);
+                actions.push({
+                    label: tool.name.replace(/_/g, ' '),
+                    action: isWrite ? 'write' : 'read',
+                    prompt: JSON.stringify({ _directExec: true, toolName: tool.name, args }),
+                    icon: isWrite ? 'edit' : 'search',
+                });
+            }
+        }
+    }
+
+    actions.sort((a, b) => (a.action === 'read' ? -1 : 1) - (b.action === 'read' ? -1 : 1));
     return actions.slice(0, 6);
 }
 

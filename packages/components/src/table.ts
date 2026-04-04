@@ -40,6 +40,16 @@ export class BurnishTable extends LitElement {
         .status-warning { color: var(--burnish-warning); }
         .status-error, .status-failing { color: var(--burnish-error); font-weight: 600; }
         .status-muted, .status-no-data { color: var(--burnish-text-muted); }
+        .explore-link {
+            color: var(--burnish-accent, #4f6df5);
+            cursor: pointer;
+            font-size: 12px;
+            white-space: nowrap;
+            text-decoration: none;
+        }
+        .explore-link:hover {
+            text-decoration: underline;
+        }
     `;
 
     declare title: string;
@@ -63,21 +73,32 @@ export class BurnishTable extends LitElement {
             <div class="table-container">
                 ${this.title ? html`<div class="table-title">${this.title}</div>` : ''}
                 <table>
-                    <thead><tr>${cols.map(c => html`<th>${c.label}</th>`)}</tr></thead>
+                    <thead><tr>${cols.map(c => html`<th>${c.label}</th>`)}<th></th></tr></thead>
                     <tbody>
-                        ${data.map(row => html`
+                        ${data.map((row, index) => html`
                             <tr>
                                 ${cols.map(c => {
                                     const val = row[c.key];
                                     const isStatus = statusField && c.key === statusField;
                                     return html`<td class="${isStatus ? `status-${val}` : ''}">${val}</td>`;
                                 })}
+                                <td><a class="explore-link" @click=${(e: Event) => this._onRowExplore(e, row, index)}>Explore →</a></td>
                             </tr>
                         `)}
                     </tbody>
                 </table>
             </div>
         `;
+    }
+
+    private _onRowExplore(e: Event, row: Record<string, unknown>, index: number) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.dispatchEvent(new CustomEvent('burnish-table-row-click', {
+            detail: { row, index },
+            bubbles: true,
+            composed: true,
+        }));
     }
 }
 
