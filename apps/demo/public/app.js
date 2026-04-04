@@ -935,7 +935,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // Try parsing itemId as JSON (data item from cards view)
+        // Check for card view item reference (viewId:index format)
+        const cardRef = itemId?.match(/^(cv-\d+):(\d+)$/);
+        if (cardRef) {
+            const item = window._cardItems?.[cardRef[1]]?.[parseInt(cardRef[2])];
+            if (item && typeof item === 'object') {
+                const meta = Object.entries(item)
+                    .filter(([, v]) => typeof v !== 'object' && v != null && String(v).length < 200)
+                    .slice(0, 8)
+                    .map(([k, v]) => ({ label: k.replace(/_/g, ' '), value: String(v) }));
+                const itemTitle = item.full_name || item.name || item.title || title;
+                let detailHtml = `<burnish-card title="${escapeAttr(itemTitle)}" status="info" body="${escapeAttr(item.description || item.body || '')}" meta='${escapeAttr(JSON.stringify(meta))}'></burnish-card>`;
+                const actions = generateContextualActionsForItem(item);
+                if (actions.length > 0) {
+                    detailHtml += `<burnish-actions actions='${escapeAttr(JSON.stringify(actions))}'></burnish-actions>`;
+                }
+                renderDeterministicNode(itemTitle, detailHtml);
+                return;
+            }
+        }
+
+        // Try parsing itemId as JSON (legacy data items)
         try {
             const item = itemId ? JSON.parse(itemId) : null;
             if (item && typeof item === 'object') {
@@ -1501,8 +1521,14 @@ function renderViewSwitcher(dataId, activeView, count) {
 }
 
 function renderCardsView(items, sourceToolName) {
+    // Store items by index for safe drill-down (avoid JSON in HTML attributes)
+    const viewId = 'cv-' + Date.now();
+    window._cardItems = window._cardItems || {};
+    window._cardItems[viewId] = items;
+
     let html = '<div class="burnish-cards-grid">';
-    for (const item of items.slice(0, 50)) {
+    for (let i = 0; i < Math.min(items.length, 50); i++) {
+        const item = items[i];
         const title = item.full_name || item.name || item.title || item.login || 'Item';
         const body = item.description || item.body || item.message || '';
         const meta = Object.entries(item)
@@ -1511,10 +1537,11 @@ function renderCardsView(items, sourceToolName) {
                 && String(v).length < 100)
             .slice(0, 4)
             .map(([k, v]) => ({ label: k.replace(/_/g, ' '), value: String(v) }));
+        // Use viewId:index as item-id — resolved in card-action handler
         html += `<burnish-card title="${escapeAttr(title)}" status="info"
             body="${escapeAttr(body.substring(0, 200))}"
             meta='${escapeAttr(JSON.stringify(meta))}'
-            item-id='${escapeAttr(JSON.stringify(item))}'></burnish-card>`;
+            item-id="${escapeAttr(viewId + ':' + i)}"></burnish-card>`;
     }
     html += '</div>';
     return html;
