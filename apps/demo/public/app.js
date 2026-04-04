@@ -2188,8 +2188,19 @@ function generateContextualActions(resultData, sourceToolName) {
     const actions = [];
 
     // Find the server that owns this tool
-    const serverName = sourceToolName.replace(/^mcp__/, '').split('__')[0];
-    const server = cachedServers?.find(s => s.name === serverName);
+    let serverName = sourceToolName.replace(/^mcp__/, '').split('__')[0];
+    let server = cachedServers?.find(s => s.name === serverName);
+    // Fallback: if no match (short tool name), find server that has this tool
+    if (!server && cachedServers) {
+        const shortName = sourceToolName.replace(/^mcp__\w+__/, '');
+        for (const s of cachedServers) {
+            if (s.tools.some(t => t.name === shortName || t.name === sourceToolName)) {
+                server = s;
+                serverName = s.name;
+                break;
+            }
+        }
+    }
     if (!server) return actions;
 
     // For items with owner/repo fields (GitHub repos)
@@ -2284,6 +2295,7 @@ function renderParsedResult(parsed, label, sourceToolName) {
                 }));
                 html += `<burnish-stat-bar items='${escapeAttr(JSON.stringify(statItems))}'></burnish-stat-bar>`;
             }
+            // Pass original sourceToolName (not nestedKey) so contextual actions can find the server
             html += renderParsedResult(parsed[nestedKey], nestedKey, sourceToolName);
             return html;
         }
