@@ -1269,27 +1269,128 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // ── Form submission (write tools) ──
-    container.addEventListener('burnish-form-submit', (e) => {
+    // ── Form submission (direct execution for read tools, LLM for write tools) ──
+    container.addEventListener('burnish-form-submit', async (e) => {
         const { toolId, values } = e.detail || {};
         if (!toolId) return;
+
         // Branch from the node containing this form
         const nodeEl = e.target.closest('.burnish-node');
         if (nodeEl?.dataset?.nodeId) branchFromNodeId = nodeEl.dataset.nodeId;
+
+        // Determine if this is a write tool (same heuristic as server-side guard)
+        const bareToolName = toolId.replace(/^mcp__\w+__/, '');
+        const isWrite = /^(create|update|delete|remove|push|write|edit|move|fork|merge|add|set|close|lock|assign)/i.test(bareToolName);
+
+        if (!isWrite) {
+            // Direct execution — bypass LLM entirely for read tools
+            try {
+                const res = await fetch('/api/tools/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ toolName: toolId, args: values }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Execution failed');
+
+                // Build display label
+                const toolShortName = (toolId.split('__').pop() || toolId).replace(/_/g, ' ');
+                const keyValues = Object.entries(values)
+                    .filter(([, v]) => v && String(v).trim())
+                    .slice(0, 3)
+                    .map(([, v]) => v)
+                    .join(', ');
+                const displayLabel = keyValues ? `${toolShortName}: ${keyValues}` : toolShortName;
+
+                // Create a navigation node for the result
+                const nodeId = generateId();
+                const session = getActiveSession();
+                if (!session) return;
+
+                const parentId = branchFromNodeId || session.activeNodeId || (session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null);
+
+                const node = {
+                    id: nodeId,
+                    prompt: `${toolShortName}: ${keyValues}`,
+                    promptDisplay: displayLabel,
+                    response: '',
+                    type: 'components',
+                    timestamp: Date.now(),
+                    parentId,
+                    children: [],
+                    collapsed: false,
+                    tags: [],
+                    summary: displayLabel,
+                };
+
+                // Add to parent's children
+                if (parentId) {
+                    const parent = session.nodes.find(n => n.id === parentId);
+                    if (parent) parent.children.push(nodeId);
+                }
+                session.nodes.push(node);
+                session.activeNodeId = nodeId;
+
+                renderMainContent();
+
+                // Parse result and render with deterministic component mapping
+                let resultHtml = '';
+                try {
+                    const parsed = JSON.parse(data.result);
+                    if (Array.isArray(parsed)) {
+                        if (parsed.length > 0 && typeof parsed[0] === 'object') {
+                            // Array of objects -> table
+                            const keys = Object.keys(parsed[0]);
+                            const cols = keys.map(k => ({ key: k, label: k }));
+                            resultHtml = `<burnish-table title="${escapeAttr(displayLabel)}" columns='${escapeAttr(JSON.stringify(cols))}' rows='${escapeAttr(JSON.stringify(parsed.slice(0, 50)))}'></burnish-table>`;
+                        } else {
+                            // Array of primitives -> cards
+                            resultHtml = parsed.map(item => `<burnish-card title="${escapeAttr(String(item))}" status="info"></burnish-card>`).join('');
+                        }
+                    } else if (typeof parsed === 'object' && parsed !== null) {
+                        // Single object -> card with meta
+                        const meta = Object.entries(parsed).slice(0, 10).map(([k, v]) => ({ label: k, value: String(v) }));
+                        resultHtml = `<burnish-card title="${escapeAttr(displayLabel)}" status="success" meta='${escapeAttr(JSON.stringify(meta))}'></burnish-card>`;
+                    } else {
+                        resultHtml = `<burnish-card title="${escapeAttr(displayLabel)}" status="success" body="${escapeAttr(String(parsed))}"></burnish-card>`;
+                    }
+                } catch {
+                    // Plain text result
+                    resultHtml = `<burnish-card title="${escapeAttr(displayLabel)}" status="success" body="${escapeAttr(data.result.substring(0, 500))}"></burnish-card>`;
+                }
+
+                node.response = resultHtml;
+                const contentEl = document.querySelector(`[data-node-id="${nodeId}"] .burnish-node-content`);
+                if (contentEl) {
+                    const clean = DOMPurify.sanitize(resultHtml, PURIFY_CONFIG);
+                    contentEl.innerHTML = clean;
+                }
+
+                updateBreadcrumb();
+                renderSessionList();
+                await saveState();
+                branchFromNodeId = null;
+                return;
+            } catch (err) {
+                console.error('Direct execution failed, falling back to LLM:', err.message);
+                // Fall through to LLM path below
+            }
+        }
+
+        // Write tools or fallback: go through LLM chat (existing behavior)
         const params = Object.entries(values)
             .filter(([, v]) => v && String(v).trim())
             .map(([k, v]) => `${k}="${v}"`)
             .join(', ');
         promptInput.value = `Call the tool ${toolId} with these exact parameters: ${params}. Show the result using burnish-* components.`;
-        // Build a readable display label from the submitted values
-        const keyValues = Object.entries(values)
+        const keyValues2 = Object.entries(values)
             .filter(([, v]) => v && String(v).trim())
             .slice(0, 3)
             .map(([, v]) => v)
             .join(', ');
-        const toolName = (toolId.split('__').pop() || toolId).replace(/_/g, ' ');
-        const displayLabel = keyValues ? `${toolName}: ${keyValues}` : toolName;
-        handleSubmit(displayLabel);
+        const toolName2 = (toolId.split('__').pop() || toolId).replace(/_/g, ' ');
+        const displayLabel2 = keyValues2 ? `${toolName2}: ${keyValues2}` : toolName2;
+        handleSubmit(displayLabel2);
     });
 
     // ── Action bar clicks ──

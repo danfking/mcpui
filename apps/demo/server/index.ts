@@ -22,6 +22,7 @@ import {
     ConversationStore,
     LlmOrchestrator,
     ALLOWED_MODELS,
+    isWriteTool,
 } from '@burnish/server';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -186,6 +187,14 @@ app.use('/api/chat/:id/stream', async (c, next) => {
     await next();
 });
 
+app.use('/api/tools/execute', async (c, next) => {
+    const ip = getClientIp(c.req.raw, c.req.raw.headers);
+    if (!checkRateLimit(ip)) {
+        return c.json({ error: 'Too many requests. Please try again later.' }, 429);
+    }
+    await next();
+});
+
 app.use('/api/title', async (c, next) => {
     const ip = getClientIp(c.req.raw, c.req.raw.headers);
     if (!checkRateLimit(ip)) {
@@ -320,6 +329,39 @@ app.get('/api/servers', (c) => {
     } catch (err) {
         console.error('[burnish] GET /api/servers error:', err);
         return c.json({ error: 'Internal server error' }, 500);
+    }
+});
+
+app.post('/api/tools/execute', async (c) => {
+    let body: { toolName: string; args: Record<string, unknown> };
+    try {
+        body = await c.req.json();
+    } catch {
+        return c.json({ error: 'Invalid request body' }, 400);
+    }
+
+    if (!body.toolName || typeof body.toolName !== 'string') {
+        return c.json({ error: 'toolName is required' }, 400);
+    }
+
+    // Check tool exists
+    const allTools = mcpHub.getAllTools();
+    const tool = allTools.find(t => t.name === body.toolName);
+    if (!tool) {
+        return c.json({ error: `Tool "${body.toolName}" not found` }, 404);
+    }
+
+    // Block write tools from direct execution — they should go through LLM with confirmation
+    if (isWriteTool(body.toolName)) {
+        return c.json({ error: 'Write tools require form submission through the chat interface' }, 403);
+    }
+
+    try {
+        const result = await mcpHub.executeTool(body.toolName, body.args || {});
+        return c.json({ result, toolName: body.toolName, serverName: tool.serverName });
+    } catch (err) {
+        console.error('[burnish] Direct tool execution failed:', err);
+        return c.json({ error: 'Tool execution failed' }, 500);
     }
 });
 
