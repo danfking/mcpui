@@ -32,12 +32,11 @@ export class BurnishCard extends LitElement {
         }
         .expand-btn {
             background: none; border: none; cursor: pointer;
-            padding: 2px; color: var(--burnish-text-muted, #9ca3af);
-            opacity: 0; transition: opacity 0.15s ease;
-            display: flex; align-items: center;
+            padding: 4px; color: var(--burnish-text-muted, #9ca3af);
+            display: flex; align-items: center; flex-shrink: 0;
+            border-radius: 3px; transition: all 0.15s ease;
         }
-        .card:hover .expand-btn { opacity: 0.7; }
-        .expand-btn:hover { opacity: 1; color: var(--burnish-accent, #4f6df5); }
+        .expand-btn:hover { color: var(--burnish-accent, #4f6df5); background: rgba(79,109,245,0.08); }
         .card {
             background: var(--burnish-surface, #fff);
             border-radius: var(--burnish-radius-md, 4px);
@@ -260,10 +259,10 @@ export class BurnishCard extends LitElement {
                     <span class="card-title">${this.title}</span>
                     <span class="card-badge" data-status="${statusColor}">${badgeText}</span>
                     <button class="expand-btn" @click=${this._toggleExpand} title="${this._expanded ? 'Collapse' : 'Expand'}">
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
                             ${this._expanded
-                                ? html`<polyline points="4,10 1,10 1,7"/><polyline points="10,4 13,4 13,7"/>`
-                                : html`<polyline points="10,1 13,1 13,4"/><polyline points="4,13 1,13 1,10"/>`}
+                                ? html`<path d="M9 1h4v4"/><path d="M5 13H1V9"/><path d="M13 1L8.5 5.5"/><path d="M1 13l4.5-4.5"/>`
+                                : html`<path d="M1 5V1h4"/><path d="M13 9v4H9"/><path d="M1 1l4.5 4.5"/><path d="M13 13L8.5 8.5"/>`}
                         </svg>
                     </button>
                 </div>
