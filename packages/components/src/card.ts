@@ -14,7 +14,10 @@ export class BurnishCard extends LitElement {
         :host {
             display: block;
             width: 340px;
-            flex: 0 0 340px;
+            max-width: 100%;
+            flex: 1 1 340px;
+            min-width: 200px;
+            box-sizing: border-box;
         }
         .card {
             background: var(--burnish-surface, #fff);
@@ -47,11 +50,12 @@ export class BurnishCard extends LitElement {
             padding: var(--burnish-space-md, 12px) var(--burnish-space-lg, 16px) var(--burnish-space-sm, 8px);
             display: flex; align-items: center; justify-content: space-between;
         }
-        .card-title { font-size: var(--burnish-font-size-md, 14px); font-weight: 600; color: var(--burnish-text, #1f2937); }
+        .card-title { font-size: var(--burnish-font-size-md, 14px); font-weight: 600; color: var(--burnish-text, #1f2937); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: anywhere; word-break: break-word; }
         .card-badge {
             font-size: var(--burnish-font-size-xs, 11px); font-weight: 600;
             text-transform: uppercase; letter-spacing: 0.5px;
             padding: 2px var(--burnish-space-sm, 8px); border-radius: 10px;
+            flex-shrink: 0;
         }
         .card-badge[data-status="success"], .card-badge[data-status="healthy"] {
             color: var(--burnish-success); background: var(--burnish-border-success);
@@ -70,6 +74,7 @@ export class BurnishCard extends LitElement {
             padding: 0 var(--burnish-space-lg, 16px) var(--burnish-space-md, 12px);
             font-size: var(--burnish-font-size-base, 13px); color: var(--burnish-text-secondary);
             line-height: 1.4;
+            overflow-wrap: anywhere; word-break: break-word;
         }
         .card-meta {
             padding: var(--burnish-space-sm, 8px) var(--burnish-space-lg, 16px);
