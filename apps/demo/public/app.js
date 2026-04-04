@@ -2178,7 +2178,20 @@ function buildResultHtml(result, label, sourceToolName) {
 }
 
 function generateContextualActions(resultData, sourceToolName) {
-    if (!cachedServers || !sourceToolName) return [];
+    if (!sourceToolName) return [];
+    // Ensure cachedServers is populated
+    if (!cachedServers) {
+        try {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', '/api/servers', false); // Synchronous fetch
+            xhr.send();
+            if (xhr.status === 200) {
+                const data = JSON.parse(xhr.responseText);
+                cachedServers = data.servers;
+            }
+        } catch { /* ignore */ }
+    }
+    if (!cachedServers) return [];
 
     const items = Array.isArray(resultData) ? resultData :
         (resultData?.items || resultData?.results || resultData?.data || []);
