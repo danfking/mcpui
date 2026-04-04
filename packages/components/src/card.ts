@@ -50,7 +50,7 @@ export class BurnishCard extends LitElement {
             padding: var(--burnish-space-md, 12px) var(--burnish-space-lg, 16px) var(--burnish-space-sm, 8px);
             display: flex; align-items: center; justify-content: space-between;
         }
-        .card-title { font-size: var(--burnish-font-size-md, 14px); font-weight: 600; color: var(--burnish-text, #1f2937); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .card-title { font-size: var(--burnish-font-size-md, 14px); font-weight: 600; color: var(--burnish-text, #1f2937); min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .card-badge {
             font-size: var(--burnish-font-size-xs, 11px); font-weight: 600;
             text-transform: uppercase; letter-spacing: 0.5px;
@@ -76,7 +76,7 @@ export class BurnishCard extends LitElement {
             line-height: 1.4;
             overflow-wrap: anywhere; word-break: break-word;
             display: -webkit-box;
-            -webkit-line-clamp: 3;
+            -webkit-line-clamp: 5;
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
