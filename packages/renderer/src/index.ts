@@ -1,13 +1,4 @@
-// @burnish/renderer — streaming render engine for MCP UI
-
-export {
-    findStreamElements,
-    appendStreamElement,
-    extractHtmlContent,
-    containsTags,
-    type StreamElement,
-    type StreamParserOptions,
-} from './stream-parser.js';
+// @burnish/renderer — render engine for MCP UI
 
 export {
     buildSanitizerConfig,
@@ -22,9 +13,3 @@ export {
     type ComponentSuggestion,
     type MapperOptions,
 } from './component-mapper.js';
-
-export {
-    ChatClient,
-    type ChatCallbacks,
-    type ChatClientOptions,
-} from './chat-client.js';

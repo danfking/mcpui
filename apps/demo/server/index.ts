@@ -1,12 +1,14 @@
 /**
- * Burnish Demo Server — thin Hono wrapper over @burnish/server.
+ * Burnish Demo Server — deterministic MCP navigator.
+ *
+ * Connects to MCP servers, lists tools, and executes them directly.
+ * No LLM, no streaming, no SSE — synchronous execution only.
  *
  * Security hardening:
  * - Input validation on all API routes
  * - Token bucket rate limiting (10 req/min per IP)
  * - Optional Bearer token auth (BURNISH_API_KEY env var)
  * - Error message sanitization (generic messages to client)
- * - Bounded caches and stores
  */
 
 import { Hono } from 'hono';
@@ -19,9 +21,6 @@ import { tmpdir } from 'node:os';
 
 import {
     McpHub,
-    ConversationStore,
-    LlmOrchestrator,
-    ALLOWED_MODELS,
     isWriteTool,
 } from '@burnish/server';
 
@@ -41,67 +40,10 @@ function safePath(baseDir: string, userPath: string): string | null {
 
 // --- Instantiate @burnish/server classes ---
 const mcpHub = new McpHub();
-const conversations = new ConversationStore(1000);
-const llm = new LlmOrchestrator(mcpHub, conversations);
-
-let activeModelName = 'sonnet'; // Set during start()
-let activeBackend = 'cli';
-
-// --- Validation helpers ---
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_PROMPT_LENGTH = 10_000;
-
-function validatePrompt(prompt: unknown): string | null {
-    if (typeof prompt !== 'string' || prompt.trim().length === 0) {
-        return 'prompt is required and must be a non-empty string';
-    }
-    if (prompt.length > MAX_PROMPT_LENGTH) {
-        return `prompt must be at most ${MAX_PROMPT_LENGTH} characters`;
-    }
-    return null;
-}
-
-function validateUuid(value: string, fieldName: string): string | null {
-    if (!UUID_RE.test(value)) {
-        return `${fieldName} must be a valid UUID`;
-    }
-    return null;
-}
-
-/** Auto-detect which LLM backend to use based on environment variables. */
-function detectBackend(): 'api' | 'cli' | 'openai' | 'none' {
-    const explicit = process.env.LLM_BACKEND;
-    if (explicit === 'none') return 'none';
-    if (explicit) return explicit as 'api' | 'cli' | 'openai';
-    if (process.env.ANTHROPIC_API_KEY) return 'api';
-    if (process.env.OPENAI_API_KEY || process.env.OPENAI_BASE_URL) return 'openai';
-    return 'cli';
-}
-
-function validateModel(model: unknown): string | null {
-    if (model !== undefined && model !== null && model !== '') {
-        if (typeof model !== 'string') {
-            return 'model must be a string';
-        }
-        // For OpenAI-compatible backends, allow any model name (local servers use arbitrary names)
-        const currentBackend = detectBackend();
-        if (currentBackend !== 'openai' && !ALLOWED_MODELS.has(model)) {
-            return `model must be one of: ${[...ALLOWED_MODELS].join(', ')}`;
-        }
-    }
-    return null;
-}
 
 // --- Token bucket rate limiter ---
-// By default, all requests share a single rate-limit bucket ('local').
-// Set TRUST_PROXY=true (or '1') to use the X-Forwarded-For header for per-IP
-// rate limiting — only enable this when running behind a trusted reverse proxy
-// that sets X-Forwarded-For reliably (e.g., nginx, Cloudflare, AWS ALB).
-// Without a trusted proxy, X-Forwarded-For is trivially spoofable.
-
-const RATE_LIMIT_MAX = 10;          // requests per window
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX = 10;
+const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_BUCKET_MAX_ENTRIES = 10_000;
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1';
 
@@ -112,14 +54,13 @@ interface RateBucket {
 
 const rateBuckets = new Map<string, RateBucket>();
 
-function getClientIp(req: Request, headers: Headers): string {
+function getClientIp(_req: Request, headers: Headers): string {
     if (TRUST_PROXY) {
         const forwarded = headers.get('x-forwarded-for');
         if (forwarded) {
             return forwarded.split(',')[0].trim();
         }
     }
-    // Without TRUST_PROXY, use a single global bucket to prevent header spoofing bypass
     return 'local';
 }
 
@@ -140,7 +81,6 @@ function checkRateLimit(ip: string): boolean {
         rateBuckets.set(ip, bucket);
     }
 
-    // Refill tokens based on elapsed time
     const elapsed = now - bucket.lastRefill;
     const refill = Math.floor(elapsed / RATE_LIMIT_WINDOW_MS) * RATE_LIMIT_MAX;
     if (refill > 0) {
@@ -149,7 +89,7 @@ function checkRateLimit(ip: string): boolean {
     }
 
     if (bucket.tokens <= 0) {
-        return false; // rate limited
+        return false;
     }
 
     bucket.tokens--;
@@ -157,8 +97,6 @@ function checkRateLimit(ip: string): boolean {
 }
 
 // --- Optional auth middleware ---
-// If BURNISH_API_KEY is set, require Authorization: Bearer <key> on all /api/* routes.
-
 const requiredApiKey = process.env.BURNISH_API_KEY || null;
 
 app.use('/api/*', async (c, next) => {
@@ -171,24 +109,7 @@ app.use('/api/*', async (c, next) => {
     await next();
 });
 
-// --- Rate limiting middleware for expensive routes ---
-
-app.use('/api/chat', async (c, next) => {
-    const ip = getClientIp(c.req.raw, c.req.raw.headers);
-    if (!checkRateLimit(ip)) {
-        return c.json({ error: 'Too many requests. Please try again later.' }, 429);
-    }
-    await next();
-});
-
-app.use('/api/chat/:id/stream', async (c, next) => {
-    const ip = getClientIp(c.req.raw, c.req.raw.headers);
-    if (!checkRateLimit(ip)) {
-        return c.json({ error: 'Too many requests. Please try again later.' }, 429);
-    }
-    await next();
-});
-
+// --- Rate limiting on tool execution ---
 app.use('/api/tools/execute', async (c, next) => {
     const ip = getClientIp(c.req.raw, c.req.raw.headers);
     if (!checkRateLimit(ip)) {
@@ -197,136 +118,7 @@ app.use('/api/tools/execute', async (c, next) => {
     await next();
 });
 
-app.use('/api/title', async (c, next) => {
-    const ip = getClientIp(c.req.raw, c.req.raw.headers);
-    if (!checkRateLimit(ip)) {
-        return c.json({ error: 'Too many requests. Please try again later.' }, 429);
-    }
-    await next();
-});
-
-app.use('/api/lookup', async (c, next) => {
-    const ip = getClientIp(c.req.raw, c.req.raw.headers);
-    if (!checkRateLimit(ip)) {
-        return c.json({ error: 'Too many requests. Please try again later.' }, 429);
-    }
-    await next();
-});
-
 // --- API Routes ---
-
-app.post('/api/chat', async (c) => {
-    if (activeBackend === 'none') {
-        return c.json({ error: 'No LLM configured. Use tool buttons for deterministic browsing.' }, 400);
-    }
-    try {
-        let body: { prompt: string; conversationId?: string; model?: string; noTools?: boolean };
-        try {
-            body = await c.req.json();
-        } catch {
-            return c.json({ error: 'Invalid request body' }, 400);
-        }
-
-        // Validate prompt
-        const promptErr = validatePrompt(body.prompt);
-        if (promptErr) return c.json({ error: promptErr }, 400);
-
-        // Validate conversationId if provided
-        if (body.conversationId) {
-            const idErr = validateUuid(body.conversationId, 'conversationId');
-            if (idErr) return c.json({ error: idErr }, 400);
-        }
-
-        // Validate model if provided
-        const modelErr = validateModel(body.model);
-        if (modelErr) return c.json({ error: modelErr }, 400);
-
-        const conv = conversations.getOrCreate(body.conversationId);
-        conversations.addMessage(conv.id, 'user', body.prompt);
-        const modelParam = body.model ? `?model=${encodeURIComponent(body.model)}` : '';
-        const noToolsParam = body.noTools ? `${modelParam ? '&' : '?'}noTools=true` : '';
-        return c.json({
-            conversationId: conv.id,
-            streamUrl: `/api/chat/${conv.id}/stream${modelParam}${noToolsParam}`,
-        });
-    } catch (err) {
-        console.error('[burnish] POST /api/chat error:', err);
-        return c.json({ error: 'Internal server error' }, 500);
-    }
-});
-
-app.get('/api/chat/:id/stream', async (c) => {
-    try {
-        const id = c.req.param('id');
-
-        // Validate id is UUID
-        const idErr = validateUuid(id, 'id');
-        if (idErr) return c.json({ error: idErr }, 400);
-
-        // Validate model query param if provided
-        const requestModel = c.req.query('model') || undefined;
-        if (requestModel) {
-            const modelErr = validateModel(requestModel);
-            if (modelErr) return c.json({ error: modelErr }, 400);
-        }
-        const noTools = c.req.query('noTools') === 'true';
-
-        const stream = new ReadableStream({
-            async start(controller) {
-                const encoder = new TextEncoder();
-                try {
-                    for await (const chunk of llm.streamResponse(id, requestModel, noTools)) {
-                        const data = JSON.stringify(chunk);
-                        controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-                    }
-                    controller.enqueue(encoder.encode('data: {"type":"done"}\n\n'));
-                } catch (err) {
-                    console.error('[burnish] Stream error:', err);
-                    const errMsg = err instanceof Error ? err.message : String(err);
-                    let userMessage = 'An error occurred while streaming the response';
-                    if (errMsg.includes('ECONNREFUSED')) {
-                        userMessage = 'LLM server not running. If using Ollama, start it with: ollama serve';
-                    } else if (errMsg.includes('model') && errMsg.includes('not found')) {
-                        userMessage = `Model not available. Pull it with: ollama pull ${requestModel || 'qwen2.5:7b'}`;
-                    } else if (errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT')) {
-                        userMessage = 'LLM server timed out. Is Ollama overloaded?';
-                    }
-                    const data = JSON.stringify({ type: 'error', message: userMessage });
-                    controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-                } finally {
-                    controller.close();
-                }
-            },
-        });
-
-        return new Response(stream, {
-            headers: {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-            },
-        });
-    } catch (err) {
-        console.error('[burnish] GET /api/chat/:id/stream error:', err);
-        return c.json({ error: 'Internal server error' }, 500);
-    }
-});
-
-app.get('/api/chat/:id', (c) => {
-    try {
-        const id = c.req.param('id');
-
-        // Validate id is UUID
-        const idErr = validateUuid(id, 'id');
-        if (idErr) return c.json({ error: idErr }, 400);
-
-        const conv = conversations.get(id);
-        return conv ? c.json(conv) : c.json({ error: 'Not found' }, 404);
-    } catch (err) {
-        console.error('[burnish] GET /api/chat/:id error:', err);
-        return c.json({ error: 'Internal server error' }, 500);
-    }
-});
 
 app.get('/api/servers', (c) => {
     try {
@@ -354,7 +146,6 @@ app.post('/api/tools/execute', async (c) => {
     let toolName = body.toolName;
     let tool = allTools.find(t => t.name === toolName);
     if (!tool) {
-        // Try stripping mcp__server__ prefix
         const shortName = toolName.replace(/^mcp__\w+__/, '');
         tool = allTools.find(t => t.name === shortName);
         if (tool) toolName = shortName;
@@ -374,7 +165,7 @@ app.post('/api/tools/execute', async (c) => {
     if (schema?.properties) {
         for (const [key, prop] of Object.entries(schema.properties)) {
             if (args[key] === undefined || args[key] === '') {
-                delete args[key]; // Remove empty optional params
+                delete args[key];
                 continue;
             }
             if ((prop.type === 'number' || prop.type === 'integer') && typeof args[key] === 'string') {
@@ -392,132 +183,6 @@ app.post('/api/tools/execute', async (c) => {
     } catch (err) {
         console.error('[burnish] Direct tool execution failed:', err);
         return c.json({ error: 'Tool execution failed' }, 500);
-    }
-});
-
-app.get('/api/models', async (c) => {
-    if (activeBackend === 'none') {
-        return c.json({ models: [], current: null, backend: 'none' });
-    }
-
-    let available: { id: string; name: string }[] = [];
-
-    if (activeBackend === 'openai') {
-        try {
-            const baseUrl = (process.env.OPENAI_BASE_URL || 'http://localhost:11434/v1').replace('/v1', '');
-            const resp = await fetch(baseUrl + '/api/tags');
-            if (resp.ok) {
-                const data = await resp.json() as { models?: { name: string }[] };
-                available = (data.models || []).map((m) => ({
-                    id: m.name,
-                    name: m.name,
-                }));
-            }
-        } catch { /* Ollama not reachable */ }
-    } else {
-        available = [
-            { id: 'sonnet', name: 'Sonnet' },
-            { id: 'haiku', name: 'Haiku (Fast)' },
-            { id: 'opus', name: 'Opus (Detailed)' },
-        ];
-    }
-
-    return c.json({ models: available, current: activeModelName, backend: activeBackend });
-});
-
-app.post('/api/title', async (c) => {
-    if (activeBackend === 'none') {
-        // No LLM — return null so the frontend uses prompt-based title
-        return c.json({ title: null });
-    }
-    try {
-        let body: { prompt: string; response: string };
-        try {
-            body = await c.req.json();
-        } catch {
-            return c.json({ error: 'Invalid request body' }, 400);
-        }
-        const { prompt, response } = body;
-
-        // Validate prompt
-        const promptErr = validatePrompt(prompt);
-        if (promptErr) return c.json({ error: promptErr }, 400);
-
-        // Validate response
-        if (typeof response !== 'string' || response.trim().length === 0) {
-            return c.json({ error: 'response is required and must be a non-empty string' }, 400);
-        }
-
-        const title = await llm.generateTitle(prompt, response);
-        return c.json({ title });
-    } catch (err) {
-        console.error('[burnish] POST /api/title error:', err);
-        return c.json({ error: 'Internal server error' }, 500);
-    }
-});
-
-// Lookup result cache — avoids redundant LLM calls for identical prompts
-// Bounded to 1,000 entries with FIFO eviction.
-const LOOKUP_CACHE_MAX = 1_000;
-const lookupCache = new Map<string, { results: unknown[]; timestamp: number }>();
-const LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-/** Evict the oldest cache entry (first key in Map insertion order) when at capacity. */
-function evictLookupCache(): void {
-    if (lookupCache.size >= LOOKUP_CACHE_MAX) {
-        const oldestKey = lookupCache.keys().next().value;
-        if (oldestKey) lookupCache.delete(oldestKey);
-    }
-}
-
-app.post('/api/lookup', async (c) => {
-    if (activeBackend === 'none') {
-        return c.json({ results: [], error: 'No LLM configured for lookups' });
-    }
-    try {
-        let body: { prompt: string };
-        try {
-            body = await c.req.json();
-        } catch {
-            return c.json({ error: 'Invalid request body' }, 400);
-        }
-        const { prompt } = body;
-
-        // Validate prompt
-        const promptErr = validatePrompt(prompt);
-        if (promptErr) return c.json({ error: promptErr }, 400);
-
-        const cached = lookupCache.get(prompt);
-        if (cached && Date.now() - cached.timestamp < LOOKUP_CACHE_TTL_MS) {
-            console.log(`[lookup] Cache hit for: ${prompt.slice(0, 60)}...`);
-            return c.json({ results: cached.results });
-        }
-
-        const conv = conversations.getOrCreate(null);
-        conversations.addMessage(conv.id, 'user', prompt);
-
-        let result = '';
-        for await (const chunk of llm.streamLookupResponse(conv.id)) {
-            if (chunk.type === 'content') result += chunk.text;
-        }
-
-        let results: unknown[] = [];
-        try {
-            const match = result.match(/\[[\s\S]*?\]/);
-            if (match) results = JSON.parse(match[0]);
-        } catch { /* fall through */ }
-
-        if (results.length > 0) {
-            evictLookupCache();
-            lookupCache.set(prompt, { results, timestamp: Date.now() });
-        }
-
-        return results.length > 0
-            ? c.json({ results })
-            : c.json({ results: [], raw: result });
-    } catch (err) {
-        console.error('[burnish] POST /api/lookup error:', err);
-        return c.json({ error: 'Internal server error' }, 500);
     }
 });
 
@@ -582,30 +247,13 @@ app.use('/*', serveStatic({ root: resolve(demoRoot, 'public') }));
 
 async function start() {
     const port = parseInt(process.env.PORT || '3000', 10);
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    const openaiKey = process.env.OPENAI_API_KEY;
-    const openaiBaseUrl = process.env.OPENAI_BASE_URL;
-    const llmBackend = detectBackend();
-    const defaultModel = llmBackend === 'openai' ? 'qwen2.5:7b' : 'sonnet';
-    const modelName = process.env.OPENAI_MODEL || process.env.ANTHROPIC_MODEL || defaultModel;
-
-    if (llmBackend === 'none') {
-        console.log('[burnish] Running in no-model mode. Only deterministic tool execution available.');
-    } else if (llmBackend === 'api' && !apiKey) {
-        console.error('[burnish] ANTHROPIC_API_KEY required for api backend.');
-        console.error('[burnish] Set LLM_BACKEND=cli to use your Claude Code subscription instead.');
-        console.error('[burnish] Or set LLM_BACKEND=openai with OPENAI_BASE_URL for local models.');
-        console.error('[burnish] Or set LLM_BACKEND=none for deterministic browsing without any model.');
-        process.exit(1);
-    }
+    const rawConfigPath = resolve(__dirname, '../mcp-servers.json');
 
     // Warn if no API key is set for auth
     if (!requiredApiKey) {
         console.warn('[burnish] WARNING: BURNISH_API_KEY is not set. API routes are unprotected.');
         console.warn('[burnish] Set BURNISH_API_KEY=<secret> to require Bearer token auth on /api/* routes.');
     }
-
-    const rawConfigPath = resolve(__dirname, '../mcp-servers.json');
 
     // Resolve ${ENV_VAR} patterns in MCP config so users don't hardcode secrets
     let configPath = rawConfigPath;
@@ -625,44 +273,8 @@ async function start() {
         // If the config file doesn't exist, fall through — mcpHub.initialize will handle it
     }
 
-    // Ollama connectivity check (non-blocking)
-    if (llmBackend === 'openai') {
-        const baseUrl = openaiBaseUrl || 'http://localhost:11434/v1';
-        try {
-            const resp = await fetch(baseUrl.replace('/v1', '') + '/api/tags');
-            if (resp.ok) {
-                const data = await resp.json() as { models?: { name: string }[] };
-                const models = (data.models || []).map((m) => m.name);
-                console.log(`[burnish] Ollama connected. Available models: ${models.join(', ') || 'none'}`);
-                if (modelName && !models.some((m: string) => m.startsWith(modelName))) {
-                    console.warn(`[burnish] WARNING: Model "${modelName}" not found in Ollama.`);
-                    console.warn(`[burnish] Available: ${models.join(', ')}`);
-                    console.warn(`[burnish] Pull it: ollama pull ${modelName}`);
-                }
-            }
-        } catch {
-            console.warn('[burnish] WARNING: Cannot reach Ollama at ' + baseUrl);
-            console.warn('[burnish] Start Ollama first: ollama serve');
-            console.warn('[burnish] Then pull a model: ollama pull ' + modelName);
-        }
-    }
-
-    activeModelName = modelName;
-    activeBackend = llmBackend;
-
-    if (llmBackend !== 'none') {
-        llm.configure({
-            backend: llmBackend as 'api' | 'cli' | 'openai',
-            apiKey: llmBackend === 'openai' ? (openaiKey || undefined) : apiKey,
-            model: modelName,
-            cwd: resolve(__dirname, '..'),
-            mcpConfigPath: configPath,
-            openaiBaseUrl,
-        });
-    }
-
     serve({ fetch: app.fetch, port }, () => {
-        console.log(`[burnish] Demo server running at http://localhost:${port}`);
+        console.log(`[burnish] Running at http://localhost:${port}`);
     });
 
     // Initialize MCP servers in the background so the HTTP server starts immediately

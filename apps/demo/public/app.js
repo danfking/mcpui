@@ -1,24 +1,18 @@
 /**
- * Burnish Demo App — main orchestration.
- * Multi-session management with inline conversation and infinite scroll navigation.
+ * Burnish Demo App — deterministic MCP navigator.
+ * Browse tools, fill forms, execute tools, render results, chain to next action.
  */
 
 import {
     getNodeById, getChildren, getRootNodes, getAncestryPath, getActivePath, getDescendantIds,
     SessionStore,
     transformOutput,
-    isWriteTool, getDrillDownPrompt, generateFallbackForm,
-    StreamOrchestrator,
+    isWriteTool, generateFallbackForm,
     generateSummary, formatTimeAgo,
-    scoreResponse,
 } from '@burnish/app';
-import {
-    findStreamElements, appendStreamElement, extractHtmlContent, containsTags as containsBurnishTags,
-} from '@burnish/renderer';
 
 // ── Persistence ──
 const persistence = new SessionStore();
-const streamOrchestrator = new StreamOrchestrator();
 
 // ── DOMPurify Config ──
 const PURIFY_CONFIG = {
@@ -32,17 +26,12 @@ const PURIFY_CONFIG = {
     FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
 };
 
-
 const ICON_SEND = `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10l7-7v4h9v6H9v4z" transform="rotate(-90 10 10)"/></svg>`;
-const ICON_STOP = `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><rect x="4" y="4" width="12" height="12" rx="2"/></svg>`;
 const ICON_FOCUS = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4,1 1,1 1,4"/><polyline points="12,1 15,1 15,4"/><polyline points="4,15 1,15 1,12"/><polyline points="12,15 15,15 15,12"/></svg>`;
 const ICON_RESTORE = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="1,4 4,4 4,1"/><polyline points="12,1 12,4 15,4"/><polyline points="1,12 4,12 4,15"/><polyline points="12,15 12,12 15,12"/></svg>`;
 const ICON_REFRESH = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8a7 7 0 0 1 13-3.5M15 8a7 7 0 0 1-13 3.5"/><polyline points="1,1 1,5 5,5"/><polyline points="15,15 15,11 11,11"/></svg>`;
 
-const SAFE_ATTRS = new Set(PURIFY_CONFIG.ADD_ATTR);
-
 // ── State ──
-let selectedModel = localStorage.getItem('burnish:selectedModel') || '';
 let searchQuery = '';
 let searchDebounceTimer = null;
 let dashboardMode = localStorage.getItem('burnish:dashboardMode') === 'true';
@@ -62,29 +51,18 @@ function getActiveSession() {
 // Track which node to branch from (set when user clicks "Branch" button)
 let branchFromNodeId = null;
 
-// Track which node is currently streaming (for spinner)
-let streamingNodeId = null;
-
-// Track tool hint for drill-down fallback form generation
-let drillDownToolHint = null;
-
 // Curated starter prompts per MCP server type
-// Each entry can have either `prompt` (LLM path) or `tool`+`args` (deterministic path)
+// Each entry can have `tool`+`args` (deterministic path)
 const STARTER_PROMPTS = {
     filesystem: [
-        { label: 'List my files', tool: 'list_directory', args: { path: '.' }, prompt: 'List the files and directories in my home folder' },
-        { label: 'Find large files', tool: 'search_files', args: { path: '.', pattern: '*' }, prompt: 'Find the 10 largest files in my home directory' },
-        { label: 'Recent changes', prompt: 'Show files modified in the last 24 hours' },
+        { label: 'List my files', tool: 'list_directory', args: { path: '.' } },
+        { label: 'Find large files', tool: 'search_files', args: { path: '.', pattern: '*' } },
     ],
     github: [
-        { label: 'Search repos', tool: 'search_repositories', args: { query: 'stars:>100' }, prompt: 'Search for my most popular repositories' },
-        { label: 'Open issues', prompt: 'Show all open issues in my repositories' },
-        { label: 'Recent PRs', prompt: 'List recent pull requests across my repos' },
+        { label: 'Search repos', tool: 'search_repositories', args: { query: 'stars:>100' } },
     ],
-    // Generic fallback for unknown servers
     _default: [
-        { label: 'Available tools', prompt: null }, // Falls through to server button behavior
-        { label: 'Get started', prompt: 'Show me what I can do with the connected services' },
+        { label: 'Available tools', prompt: null },
     ],
 };
 
@@ -104,7 +82,7 @@ async function loadState() {
     return persistence.load();
 }
 
-// ── Session CRUD ──
+// ─�� Session CRUD ──
 async function createSession() {
     const session = {
         id: generateId(),
@@ -120,16 +98,6 @@ async function createSession() {
     renderSessionList();
     renderMainContent();
     updateBreadcrumb();
-
-    // Reset submit button state in case it was stuck from a previous session
-    const submitBtn = document.getElementById('btn-submit');
-    if (submitBtn) {
-        submitBtn.classList.remove('cancel');
-        submitBtn.innerHTML = ICON_SEND;
-    }
-    const promptInput = document.getElementById('prompt-input');
-    if (promptInput) promptInput.disabled = false;
-
     await saveState();
 }
 
@@ -158,10 +126,8 @@ async function deleteSession(sessionId) {
     const name = session?.title || 'this session';
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
 
-    // Collect node IDs to delete from IndexedDB
     let nodeIds = session?.nodes?.length ? session.nodes.map(n => n.id) : (session?._nodeIds || []);
 
-    // Fallback: read from IndexedDB metadata if session wasn't loaded and has no _nodeIds
     if (nodeIds.length === 0 && session) {
         try {
             const meta = await persistence.getSessionNodeIds(session.id);
@@ -179,7 +145,6 @@ async function deleteSession(sessionId) {
     }
     renderSessionList();
 
-    // Delete orphaned nodes from IndexedDB
     if (nodeIds.length > 0) {
         await persistence.deleteNodes(nodeIds);
     }
@@ -203,13 +168,11 @@ function updateBreadcrumb() {
 
     const truncate = (s, max = 25) => s.length > max ? s.substring(0, max) + '\u2026' : s;
 
-    // Build full ancestry path from root to active node
     let pathNodes = [];
     if (session.activeNodeId) {
         pathNodes = getAncestryPath(session, session.activeNodeId);
     }
 
-    // Build crumb segments: session title first, then each node in path
     const segments = [];
     segments.push({ label: truncate(session.title || 'Dashboard'), nodeId: null });
     for (const node of pathNodes) {
@@ -217,7 +180,6 @@ function updateBreadcrumb() {
         segments.push({ label: truncate(raw), nodeId: node.id });
     }
 
-    // If path is longer than 4 segments, collapse middle: Title > ... > Parent > Active
     let displaySegments = segments;
     if (segments.length > 4) {
         displaySegments = [
@@ -228,7 +190,6 @@ function updateBreadcrumb() {
         ];
     }
 
-    // Render as clickable spans
     breadcrumb.innerHTML = displaySegments.map((seg, i) => {
         const sep = i > 0 ? ' <span class="burnish-crumb-sep">\u203A</span> ' : '';
         if (seg.ellipsis) return sep + '<span class="burnish-crumb burnish-crumb-ellipsis">\u2026</span>';
@@ -296,13 +257,11 @@ function renderSessionList() {
     const listEl = document.getElementById('session-list');
     if (!listEl) return;
 
-    // If searching and there are unloaded sessions, load them first then re-render
     if (searchQuery && sessions.some(s => s._nodeIds && !persistence.isLoaded(s.id))) {
         ensureAllSessionsLoaded().then(() => renderSessionList());
         return;
     }
 
-    // Group by time
     const now = Date.now();
     const dayMs = 86400000;
     const todayStart = new Date().setHours(0, 0, 0, 0);
@@ -360,15 +319,7 @@ function createNodeEl(node) {
     div.dataset.nodeId = node.id;
     div.dataset.collapsed = String(node.collapsed);
 
-    // Build stats tooltip content
     const statsParts = [];
-    if (node.stats) {
-        const dur = (node.stats.durationMs / 1000).toFixed(1);
-        const tokens = (node.stats.inputTokens || 0) + (node.stats.outputTokens || 0);
-        statsParts.push(`${dur}s`);
-        if (tokens > 0) statsParts.push(`${tokens.toLocaleString()} tokens`);
-        if (node.stats.costUsd) statsParts.push(`$${node.stats.costUsd.toFixed(4)}`);
-    }
     if (node.summary) statsParts.push(node.summary);
     const statsTooltip = statsParts.join(' \u2022 ');
 
@@ -439,12 +390,11 @@ async function regenerateNode(nodeId) {
     const session = getActiveSession();
     if (!session) return;
     const node = session.nodes.find(n => n.id === nodeId);
-    if (!node || streamingNodeId) return;
+    if (!node) return;
 
     // Deterministic regeneration — re-execute the same tool call
     if (node._executionMode === 'deterministic' && node._toolCall) {
         if (node._toolCall.toolName === '__listing__') {
-            // Re-render tool listing
             const serverData = cachedServers?.find(s => s.name === node._toolCall.args.serverName);
             if (serverData) {
                 node.response = '';
@@ -457,7 +407,6 @@ async function regenerateNode(nodeId) {
                 return;
             }
         } else {
-            // Re-execute tool directly
             try {
                 const res = await fetch('/api/tools/execute', {
                     method: 'POST',
@@ -484,14 +433,13 @@ async function regenerateNode(nodeId) {
         }
     }
 
-    // Fallback: try to infer tool from node prompt for legacy nodes without metadata
+    // Try to infer tool from node prompt for legacy nodes without metadata
     if (!node._toolCall && node.prompt) {
         const promptLower = node.prompt.toLowerCase();
         for (const [toolName, schema] of Object.entries(toolSchemaCache)) {
             const shortName = toolName.replace(/^mcp__\w+__/, '');
             const words = shortName.split(/[_\-]+/).filter(w => w.length > 2);
             if (words.every(w => promptLower.includes(w))) {
-                // Extract args from prompt (text after colon)
                 const argsText = node.prompt.includes(':') ? node.prompt.split(':').slice(1).join(':').trim() : '';
                 const inferredArgs = {};
                 if (argsText && schema.properties) {
@@ -504,182 +452,19 @@ async function regenerateNode(nodeId) {
                 }
                 node._executionMode = 'deterministic';
                 node._toolCall = { toolName, args: inferredArgs, label: node.promptDisplay };
-                // Retry with inferred metadata
                 return regenerateNode(nodeId);
             }
         }
     }
 
-    // If no LLM available and not deterministic, show friendly message
-    if (!window._llmAvailable) {
-        const contentEl = document.querySelector(`[data-node-id="${nodeId}"] .burnish-node-content`);
-        if (contentEl) {
-            contentEl.innerHTML = DOMPurify.sanitize(
-                '<burnish-card title="Cannot regenerate" status="warning" body="No LLM configured. Close this node and re-run the tool from its form."></burnish-card>',
-                PURIFY_CONFIG
-            );
-        }
-        const submitBtn = document.getElementById('btn-submit');
-        if (submitBtn) {
-            submitBtn.classList.remove('cancel');
-            submitBtn.innerHTML = ICON_SEND;
-        }
-        const promptInput = document.getElementById('prompt-input');
-        if (promptInput) promptInput.disabled = false;
-        return;
+    // Cannot regenerate without tool metadata
+    const contentEl = document.querySelector(`[data-node-id="${nodeId}"] .burnish-node-content`);
+    if (contentEl) {
+        contentEl.innerHTML = DOMPurify.sanitize(
+            '<burnish-card title="Cannot regenerate" status="warning" body="Close this node and re-run the tool from its form."></burnish-card>',
+            PURIFY_CONFIG
+        );
     }
-
-    // Track regeneration count as implicit negative signal
-    node._regenerateCount = (node._regenerateCount || 0) + 1;
-
-    // Clear existing response and re-submit
-    node.response = null;
-    node.type = null;
-    node.tags = null;
-    node.summary = null;
-    node.stats = null;
-    node._progressLog = [];
-    node._componentLog = [];
-    session.activeNodeId = nodeId;
-
-    // Re-render and simulate a new submission for this node's prompt
-    renderMainContent();
-    const nodeEl = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
-    const contentEl = nodeEl?.querySelector('.burnish-node-content');
-    if (contentEl) contentEl.innerHTML = getProgressHtml();
-
-    addNodeSpinner(nodeId);
-    updateNodeStatus(nodeId, 'Submitting…');
-
-    const promptInput = document.getElementById('prompt-input');
-    const submitBtn = document.getElementById('btn-submit');
-    submitBtn.classList.add('cancel');
-    submitBtn.innerHTML = ICON_STOP;
-    promptInput.disabled = true;
-
-    let renderedCount = 0;
-    let streamingStarted = false;
-    const containerStack = [];
-
-    // Build contextual prompt (same logic as handleSubmit)
-    let contextualPrompt = node.prompt;
-    if (node.parentId) {
-        const ancestry = getAncestryPath(session, node.parentId);
-        const contextParts = ancestry
-            .filter(n => n.response)
-            .slice(-3)
-            .map(n => `Previous step "${n.promptDisplay}": ${(n.response || '').substring(0, 200)}`)
-            .join('\n');
-        if (contextParts) {
-            contextualPrompt = `Context from previous steps:\n${contextParts}\n\nCurrent request: ${node.prompt}`;
-        }
-    }
-
-    submitPrompt(
-        contextualPrompt,
-        session.conversationId,
-        (chunk, fullText) => {
-            const trimmed = fullText.trim();
-            if (containsBurnishTags(trimmed)) {
-                if (!streamingStarted) {
-                    streamingStarted = true;
-                    stopProgressTimer();
-                    contentEl.innerHTML = '';
-                    node.type = 'components';
-                }
-                // Strip any preamble text before the first burnish tag
-                const componentStart = trimmed.indexOf('<burnish-');
-                const componentHtml = componentStart > 0 ? trimmed.substring(componentStart) : trimmed;
-                const elements = findStreamElements(componentHtml);
-                while (renderedCount < elements.length) {
-                    const el = elements[renderedCount];
-                    appendElement(contentEl, containerStack, el);
-                    if (el.tagName && el.tagName.startsWith('burnish-') && el.type === 'leaf') {
-                        node._componentLog.push({ tag: el.tagName, timestamp: Date.now() });
-                        updateNodeStatus(nodeId, `Rendering ${el.tagName}…`);
-                    }
-                    renderedCount++;
-                }
-            }
-            // Don't render plain text during streaming — buffer it.
-            // If the stream ends without burnish tags, onDone renders it as text.
-        },
-        async (fullText, newConversationId) => {
-            stopProgressTimer();
-            removeNodeSpinner(nodeId);
-            removeNodeStatus(nodeId);
-            submitBtn.classList.remove('cancel');
-            submitBtn.innerHTML = ICON_SEND;
-            promptInput.disabled = false;
-
-            session.conversationId = newConversationId;
-            const trimmed = fullText.trim();
-            node.response = trimmed;
-            node.type = containsBurnishTags(trimmed) ? 'components' : 'text';
-
-            // Score the response quality
-            const score = scoreResponse(node.response || '');
-            node._qualityScore = score.total;
-
-            if (!trimmed) {
-                contentEl.innerHTML = '<div class="burnish-text-response" style="color: var(--burnish-text-muted, #9ca3af); font-style: italic;">No response received. Try regenerating.</div>';
-                node.type = 'text';
-                updateNodeSummary(nodeId);
-                updateBreadcrumb();
-                renderSessionList();
-                await saveState();
-                return;
-            }
-
-            if (containsBurnishTags(trimmed)) {
-                // Always apply transformOutput on completion to ensure
-                // color normalization rules run (streaming bypasses them)
-                contentEl.innerHTML = '';
-                const clean = transformOutput(DOMPurify.sanitize(extractContent(trimmed), PURIFY_CONFIG));
-                const temp = document.createElement('template');
-                temp.innerHTML = clean;
-                contentEl.appendChild(temp.content);
-            } else {
-                contentEl.innerHTML = `<div class="burnish-text-response">${renderMarkdown(trimmed)}</div>`;
-            }
-
-            updateNodeSummary(nodeId);
-            updateBreadcrumb();
-            renderSessionList();
-            await saveState();
-        },
-        async (error) => {
-            stopProgressTimer();
-            removeNodeSpinner(nodeId);
-            removeNodeStatus(nodeId);
-            submitBtn.classList.remove('cancel');
-            submitBtn.innerHTML = ICON_SEND;
-            promptInput.disabled = false;
-            contentEl.innerHTML = `<div class="burnish-text-response" style="color: var(--burnish-error, #ef4444);">Error: ${escapeHtml(error)}</div>`;
-            node.response = error;
-            node.type = 'text';
-            node.summary = 'Error';
-            node.tags = ['error'];
-            updateNodeSummary(nodeId);
-            await saveState();
-        },
-        (stage, detail, meta) => {
-            updateProgress(contentEl, stage, detail);
-            let statusText = detail || stage;
-            if (meta?.server) statusText += ` (${meta.server})`;
-            else if (meta?.model) statusText += ` (${meta.model})`;
-            updateNodeStatus(nodeId, statusText);
-            node._progressLog.push({ stage, detail, meta, timestamp: Date.now() });
-        },
-        async (stats) => {
-            node.stats = stats;
-            updateNodeHeader(nodeId);
-            await saveState();
-        },
-        (steps) => {
-            updateWorkflowTrace(contentEl, steps);
-        }
-    );
 }
 
 async function toggleNode(nodeId) {
@@ -690,10 +475,9 @@ async function toggleNode(nodeId) {
 
     node.collapsed = !node.collapsed;
 
-    // When expanding a node, make it the active node so its branch highlights
     if (!node.collapsed) {
         session.activeNodeId = nodeId;
-        renderMainContent();  // Re-render to update active path dimming
+        renderMainContent();
     } else {
         const el = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
         if (el) el.dataset.collapsed = 'true';
@@ -724,14 +508,12 @@ async function deleteNode(nodeId) {
     const node = getNodeById(session, nodeId);
     if (!node) return;
 
-    // Count all descendants
     const removeIds = new Set(getDescendantIds(session, nodeId));
     const count = removeIds.size;
     const noun = count === 1 ? 'this step' : `this step and ${count - 1} descendant${count > 2 ? 's' : ''}`;
 
     if (!confirm(`Delete ${noun}? This cannot be undone.`)) return;
 
-    // Remove from parent's children array
     if (node.parentId) {
         const parent = getNodeById(session, node.parentId);
         if (parent?.children) {
@@ -739,10 +521,8 @@ async function deleteNode(nodeId) {
         }
     }
 
-    // Remove all descendants from nodes array
     session.nodes = session.nodes.filter(n => !removeIds.has(n.id));
 
-    // Update active node if it was deleted
     if (removeIds.has(session.activeNodeId)) {
         session.activeNodeId = node.parentId || (session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null);
     }
@@ -751,7 +531,6 @@ async function deleteNode(nodeId) {
     renderMainContent();
     renderSessionList();
 
-    // Remove deleted nodes from IndexedDB
     await persistence.deleteNodes([...removeIds]);
     await saveState();
 }
@@ -791,20 +570,12 @@ function updateNodeHeader(nodeId) {
     if (!el) return;
 
     const parts = [];
-    if (node.stats) {
-        const dur = (node.stats.durationMs / 1000).toFixed(1);
-        const tokens = (node.stats.inputTokens || 0) + (node.stats.outputTokens || 0);
-        parts.push(`${dur}s`);
-        if (tokens > 0) parts.push(`${tokens.toLocaleString()} tokens`);
-        if (node.stats.costUsd) parts.push(`$${node.stats.costUsd.toFixed(4)}`);
-    }
     if (node.summary) parts.push(node.summary);
 
     const infoBtn = el.querySelector('.burnish-node-info');
     if (infoBtn) {
         infoBtn.title = parts.join(' \u2022 ');
     } else if (parts.length > 0) {
-        // Insert info button if it doesn't exist yet
         const deleteBtn = el.querySelector('.burnish-node-delete');
         if (deleteBtn) {
             const btn = document.createElement('button');
@@ -820,67 +591,15 @@ function updateNodeHeader(nodeId) {
     }
 }
 
-function addNodeSpinner(nodeId) {
-    streamingNodeId = nodeId;
-    const el = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
-    if (!el) return;
-    const header = el.querySelector('.burnish-node-header');
-    if (!header || header.querySelector('.burnish-node-spinner')) return;
-    const spinner = document.createElement('span');
-    spinner.className = 'burnish-node-spinner';
-    // Insert before the action buttons (info/maximize/delete) — after the time element
-    const timeEl = header.querySelector('.burnish-node-time');
-    if (timeEl) {
-        timeEl.after(spinner);
-    } else {
-        header.appendChild(spinner);
-    }
-}
-
-function removeNodeSpinner(nodeId) {
-    streamingNodeId = null;
-    const el = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
-    if (!el) return;
-    el.querySelector('.burnish-node-spinner')?.remove();
-}
-
-function updateNodeStatus(nodeId, text) {
-    const el = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
-    if (!el) return;
-    const header = el.querySelector('.burnish-node-header');
-    if (!header) return;
-    let statusEl = header.querySelector('.burnish-node-status');
-    if (!statusEl) {
-        statusEl = document.createElement('span');
-        statusEl.className = 'burnish-node-status';
-        // Insert before the time element
-        const timeEl = header.querySelector('.burnish-node-time');
-        if (timeEl) {
-            timeEl.before(statusEl);
-        } else {
-            header.appendChild(statusEl);
-        }
-    }
-    statusEl.textContent = text;
-}
-
-function removeNodeStatus(nodeId) {
-    const el = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
-    if (!el) return;
-    el.querySelector('.burnish-node-status')?.remove();
-}
-
 function toggleDiagnosticPanel(nodeId) {
     const el = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
     if (!el) return;
     const contentEl = el.querySelector('.burnish-node-content');
     if (!contentEl) return;
 
-    // Toggle existing panel
     const existing = contentEl.querySelector('.burnish-diagnostic-panel');
     if (existing) { existing.remove(); return; }
 
-    // Find node data
     const session = getActiveSession();
     if (!session) return;
     const node = session.nodes.find(n => n.id === nodeId);
@@ -889,89 +608,21 @@ function toggleDiagnosticPanel(nodeId) {
     const panel = document.createElement('div');
     panel.className = 'burnish-diagnostic-panel';
 
-    // Summary metrics
     const metrics = [];
-    if (node.stats) {
-        const dur = (node.stats.durationMs / 1000).toFixed(1);
-        metrics.push(`<span class="burnish-diag-metric"><strong>Duration</strong> ${dur}s</span>`);
-        if (node.stats.inputTokens || node.stats.outputTokens) {
-            metrics.push(`<span class="burnish-diag-metric"><strong>Tokens</strong> ${(node.stats.inputTokens || 0).toLocaleString()} in / ${(node.stats.outputTokens || 0).toLocaleString()} out</span>`);
-        }
-        if (node.stats.costUsd) {
-            metrics.push(`<span class="burnish-diag-metric"><strong>Cost</strong> $${node.stats.costUsd.toFixed(4)}</span>`);
+    if (node._toolCall) {
+        metrics.push(`<span class="burnish-diag-metric"><strong>Tool</strong> ${escapeHtml(node._toolCall.toolName)}</span>`);
+        const argStr = JSON.stringify(node._toolCall.args || {});
+        if (argStr !== '{}') {
+            metrics.push(`<span class="burnish-diag-metric"><strong>Args</strong> ${escapeHtml(argStr.substring(0, 100))}</span>`);
         }
     }
-
-    // Quality score
-    if (node._qualityScore != null) {
-        metrics.push(`<span class="burnish-diag-metric"><strong>Quality</strong> ${node._qualityScore}/10</span>`);
+    if (node._executionMode) {
+        metrics.push(`<span class="burnish-diag-metric"><strong>Mode</strong> ${escapeHtml(node._executionMode)}</span>`);
     }
 
-    // Extract model from progress log
-    const progressLog = node._progressLog || [];
-    const modelEntry = progressLog.find(e => e.meta?.model);
-    if (modelEntry) {
-        metrics.unshift(`<span class="burnish-diag-metric"><strong>Model</strong> ${escapeHtml(modelEntry.meta.model)}</span>`);
-    }
-
-    // Step timeline
-    let stepsHtml = '';
-    if (progressLog.length > 0) {
-        const baseTime = progressLog[0].timestamp;
-        stepsHtml = '<div class="burnish-diag-section-title">Steps</div>'
-            + '<div class="burnish-diag-steps">';
-        for (let i = 0; i < progressLog.length; i++) {
-            const step = progressLog[i];
-            const elapsed = ((step.timestamp - baseTime) / 1000).toFixed(1);
-            let label = escapeHtml(step.detail || step.stage);
-            if (step.meta?.server) label += ` (${escapeHtml(step.meta.server)})`;
-            else if (step.meta?.model) label += ` (${escapeHtml(step.meta.model)})`;
-
-            // Duration for this step = time until next step (or until end)
-            let stepDur = '';
-            if (i < progressLog.length - 1) {
-                stepDur = ((progressLog[i + 1].timestamp - step.timestamp) / 1000).toFixed(1) + 's';
-            } else if (node.stats) {
-                // Last step: compute from total duration
-                const totalEnd = progressLog[0].timestamp + node.stats.durationMs;
-                stepDur = ((totalEnd - step.timestamp) / 1000).toFixed(1) + 's';
-            }
-
-            stepsHtml += `<div class="burnish-diag-step">`
-                + `<span class="burnish-diag-check">\u2713</span>`
-                + `<span class="burnish-diag-label">${label}</span>`
-                + `<span class="burnish-diag-time">${stepDur}</span>`
-                + `</div>`;
-        }
-        stepsHtml += '</div>';
-    }
-
-    // Component breakdown
-    let componentsHtml = '';
-    const componentLog = node._componentLog || [];
-    if (componentLog.length > 0) {
-        const modelName = modelEntry ? modelEntry.meta.model : '';
-        const streamStart = progressLog.length > 0 ? progressLog[progressLog.length - 1].timestamp : componentLog[0].timestamp;
-        componentsHtml = '<div class="burnish-diag-section-title">Components</div>'
-            + '<div class="burnish-diag-steps">';
-        for (let i = 0; i < componentLog.length; i++) {
-            const comp = componentLog[i];
-            const prev = i === 0 ? streamStart : componentLog[i - 1].timestamp;
-            const dur = ((comp.timestamp - prev) / 1000).toFixed(1) + 's';
-            const modelSuffix = modelName ? ` (${escapeHtml(modelName)})` : '';
-            componentsHtml += `<div class="burnish-diag-step">`
-                + `<span class="burnish-diag-check">\u2713</span>`
-                + `<span class="burnish-diag-label">${escapeHtml(comp.tag)}${modelSuffix}</span>`
-                + `<span class="burnish-diag-time">${dur}</span>`
-                + `</div>`;
-        }
-        componentsHtml += '</div>';
-    }
-
-    panel.innerHTML = (metrics.length > 0
-        ? `<div class="burnish-diag-metrics">${metrics.join('')}</div>` : '')
-        + stepsHtml
-        + componentsHtml;
+    panel.innerHTML = metrics.length > 0
+        ? `<div class="burnish-diag-metrics">${metrics.join('')}</div>`
+        : '<div class="burnish-diag-metrics"><span class="burnish-diag-metric">No diagnostic data</span></div>';
 
     contentEl.insertBefore(panel, contentEl.firstChild);
 }
@@ -1000,7 +651,6 @@ function renderMainContent() {
         renderTreeNode(treeWrapper, session, root, activePath);
     }
 
-    // Scroll to active node
     if (session.activeNodeId) {
         setTimeout(() => scrollToNode(session.activeNodeId, false), 100);
     }
@@ -1009,7 +659,6 @@ function renderMainContent() {
 function renderTreeNode(container, session, node, activePath) {
     const isActive = activePath.has(node.id);
 
-    // Collapse non-active nodes (except the active leaf)
     const isActiveLeaf = node.id === getActiveSession()?.activeNodeId;
     node.collapsed = !isActiveLeaf;
 
@@ -1017,34 +666,27 @@ function renderTreeNode(container, session, node, activePath) {
     if (!isActive) nodeEl.classList.add('burnish-node-dimmed');
     container.appendChild(nodeEl);
 
-    // Populate content
     if (node.response) {
         const contentEl = nodeEl.querySelector('.burnish-node-content');
         if (node.type === 'components') {
-            const clean = transformOutput(DOMPurify.sanitize(extractContent(node.response), PURIFY_CONFIG));
+            const clean = transformOutput(DOMPurify.sanitize(node.response, PURIFY_CONFIG));
             const temp = document.createElement('template');
             temp.innerHTML = clean;
             contentEl.appendChild(temp.content);
         } else {
             contentEl.innerHTML = `<div class="burnish-text-response">${renderMarkdown(node.response)}</div>`;
         }
-    } else if (isActiveLeaf && !node.collapsed) {
-        // Show progress indicator for active nodes with no response yet
-        const contentEl = nodeEl.querySelector('.burnish-node-content');
-        if (contentEl) contentEl.innerHTML = getProgressHtml();
     }
 
     const children = getChildren(session, node.id);
     if (children.length === 0) return;
 
     if (children.length === 1) {
-        // Single child — continue vertically
         const connector = document.createElement('div');
         connector.className = 'burnish-tree-connector';
         container.appendChild(connector);
         renderTreeNode(container, session, children[0], activePath);
     } else {
-        // Multiple children — branch horizontally, each with its own connector
         const branchContainer = document.createElement('div');
         branchContainer.className = 'burnish-tree-branches';
         container.appendChild(branchContainer);
@@ -1055,7 +697,6 @@ function renderTreeNode(container, session, node, activePath) {
             if (activePath.has(child.id)) branchCol.classList.add('active');
             branchContainer.appendChild(branchCol);
 
-            // Each branch gets its own connector line
             const branchConnector = document.createElement('div');
             branchConnector.className = 'burnish-tree-connector';
             branchCol.appendChild(branchConnector);
@@ -1065,96 +706,12 @@ function renderTreeNode(container, session, node, activePath) {
     }
 }
 
-// ── Progress Indicator (audit trail) ──
-let _progressTimer = null;
-
-function getProgressHtml() {
-    return `
-        <div class="burnish-progress" data-start="${Date.now()}">
-            <div class="burnish-progress-trail"></div>
-        </div>
-    `;
-}
-
-function stopProgressTimer() {
-    if (_progressTimer) { clearInterval(_progressTimer); _progressTimer = null; }
-}
-
-function updateProgress(contentEl, stage, detail) {
-    const progressEl = contentEl.querySelector('.burnish-progress');
-    if (!progressEl) return;
-    const trail = progressEl.querySelector('.burnish-progress-trail');
-    if (!trail) return;
-    const now = Date.now();
-
-    // Finalize the previous active entry (freeze its timer)
-    const prevActive = trail.querySelector('.burnish-progress-entry.active');
-    if (prevActive) {
-        prevActive.classList.remove('active');
-        prevActive.classList.add('done');
-        const timeEl = prevActive.querySelector('.burnish-progress-time');
-        if (timeEl && prevActive.dataset.started) {
-            const elapsed = ((now - Number(prevActive.dataset.started)) / 1000).toFixed(1);
-            timeEl.textContent = elapsed + 's';
-        }
-    }
-
-    // Append a new entry
-    const label = detail || stage;
-    const entry = document.createElement('div');
-    entry.className = 'burnish-progress-entry active';
-    entry.dataset.started = String(now);
-    entry.innerHTML = `<span class="burnish-progress-dot"></span><span class="burnish-progress-label">${escapeHtml(label)}</span><span class="burnish-progress-time"></span>`;
-    trail.appendChild(entry);
-
-    // Scroll trail to bottom if overflow
-    trail.scrollTop = trail.scrollHeight;
-
-    // Start tick timer for the new active entry
-    stopProgressTimer();
-    _progressTimer = setInterval(() => {
-        const active = trail.querySelector('.burnish-progress-entry.active');
-        if (!active) { stopProgressTimer(); return; }
-        const timeEl = active.querySelector('.burnish-progress-time');
-        if (timeEl && active.dataset.started) {
-            const elapsed = ((Date.now() - Number(active.dataset.started)) / 1000).toFixed(1);
-            timeEl.textContent = elapsed + 's';
-        }
-    }, 100);
-}
-
 // ── Main ──
 document.addEventListener('DOMContentLoaded', async () => {
     const promptInput = document.getElementById('prompt-input');
     const submitBtn = document.getElementById('btn-submit');
     const container = document.getElementById('dashboard-container');
     const breadcrumb = document.getElementById('breadcrumb');
-
-    // ── Model selector ──
-    const modelSelect = document.getElementById('model-select');
-    if (modelSelect) {
-        fetch('/api/models')
-            .then(r => r.json())
-            .then(({ models, current }) => {
-                if (models.length === 0) {
-                    modelSelect.innerHTML = '<option value="">No models</option>';
-                    return;
-                }
-                const activeModel = selectedModel || current;
-                modelSelect.innerHTML = models.map(m =>
-                    `<option value="${escapeAttr(m.id)}"${m.id === activeModel ? ' selected' : ''}>${escapeHtml(m.name)}</option>`
-                ).join('');
-                if (!selectedModel) selectedModel = current;
-            })
-            .catch(() => {
-                modelSelect.innerHTML = '<option value="">Default</option>';
-            });
-
-        modelSelect.addEventListener('change', () => {
-            selectedModel = modelSelect.value;
-            localStorage.setItem('burnish:selectedModel', selectedModel);
-        });
-    }
 
     // ── Dashboard mode toggle ──
     if (dashboardMode) {
@@ -1184,14 +741,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     document.getElementById('session-list')?.addEventListener('click', (e) => {
-        // Delete button
         const deleteBtn = e.target.closest('.burnish-session-delete');
         if (deleteBtn) {
             e.stopPropagation();
             deleteSession(deleteBtn.dataset.deleteId);
             return;
         }
-        // Session item click
         const item = e.target.closest('.burnish-session-item');
         if (item) switchSession(item.dataset.sessionId);
     });
@@ -1223,13 +778,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     submitBtn.addEventListener('click', () => {
-        if (streamOrchestrator.isStreaming) {
-            streamOrchestrator.cancel();
-            submitBtn.classList.remove('cancel');
-            submitBtn.innerHTML = ICON_SEND;
-        } else {
-            handleSubmit();
-        }
+        handleSubmit();
     });
 
     promptInput.addEventListener('input', () => {
@@ -1250,8 +799,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        // Deterministic server button — render tool listing without LLM
-        if (btn.dataset.noTools === 'true' && btn.classList.contains('burnish-suggestion-server')) {
+        // Deterministic server button — render tool listing
+        if (btn.classList.contains('burnish-suggestion-server')) {
             const serverName = btn.dataset.label;
             const serverData = cachedServers?.find(s => s.name === serverName);
             if (serverData && serverData.tools.length > 0) {
@@ -1260,10 +809,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
+        // For any other suggestion, show a hint to use tools
         if (btn.dataset.prompt) {
             promptInput.value = btn.dataset.prompt;
-            const noTools = btn.dataset.noTools === 'true';
-            handleSubmit(btn.dataset.label || undefined, noTools);
+            handleSubmit(btn.dataset.label || undefined);
         }
     });
 
@@ -1287,14 +836,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Global keyboard shortcuts ──
     document.addEventListener('keydown', (e) => {
-        // Escape: cancel streaming
-        if (e.key === 'Escape' && streamOrchestrator.isStreaming) {
-            streamOrchestrator.cancel();
-            submitBtn.classList.remove('cancel');
-            submitBtn.innerHTML = ICON_SEND;
-            return;
-        }
-        // Don't trigger shortcuts when typing in an input/textarea/select/contenteditable
         const tag = document.activeElement?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable) return;
         // Ctrl/Cmd+K: focus session search
@@ -1311,21 +852,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // ── Card drill-down ──
-    // ── Stat-bar filter — click chip to show/hide sections ──
+    // ── Stat-bar filter ──
     container.addEventListener('burnish-filter', (e) => {
         const { filter } = e.detail || {};
-        // Find the node content area containing this stat-bar
         const nodeContent = e.target.closest('.burnish-node-content');
         if (!nodeContent) return;
 
-        // Show/hide sibling sections and cards based on filter
         const sections = nodeContent.querySelectorAll('burnish-section');
         const cards = nodeContent.querySelectorAll('burnish-card');
         const tables = nodeContent.querySelectorAll('burnish-table');
 
         if (!filter) {
-            // No filter — show everything
             sections.forEach(el => el.style.display = '');
             cards.forEach(el => el.style.display = '');
             tables.forEach(el => el.style.display = '');
@@ -1333,7 +870,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const filterLower = filter.toLowerCase();
             const filterWords = filterLower.split(/\s+/);
 
-            // Try matching sections by label (fuzzy: any word matches)
             let anyMatch = false;
             sections.forEach(el => {
                 const label = (el.getAttribute('label') || '').toLowerCase();
@@ -1342,9 +878,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (matches) anyMatch = true;
             });
 
-            // If no sections matched, try filtering cards by text content
             if (!anyMatch && sections.length > 0) {
-                // Show all sections but filter cards within them
                 sections.forEach(el => el.style.display = '');
                 cards.forEach(el => {
                     const text = el.textContent?.toLowerCase() || '';
@@ -1354,7 +888,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 anyMatch = [...cards].some(el => el.style.display !== 'none');
             }
 
-            // If still nothing matched, show everything (filter doesn't apply)
             if (!anyMatch) {
                 sections.forEach(el => el.style.display = '');
                 cards.forEach(el => el.style.display = '');
@@ -1363,15 +896,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // ── Card drill-down ──
     container.addEventListener('burnish-card-action', (e) => {
         const { title, status, itemId } = e.detail || {};
         if (!title) return;
 
-        if (streamOrchestrator.isStreaming) {
-            streamOrchestrator.cancel();
-            submitBtn.classList.remove('cancel');
-            submitBtn.innerHTML = ICON_SEND;
-        }
         // Branch from the node containing this card
         const nodeEl = e.target.closest('.burnish-node');
         if (nodeEl?.dataset?.nodeId) branchFromNodeId = nodeEl.dataset.nodeId;
@@ -1382,24 +911,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             const hasAnyParams = schema.properties && Object.keys(schema.properties).length > 0;
 
             if (hasAnyParams) {
-                // Show form from schema — no LLM needed
                 const formHtml = generateFallbackForm(itemId, schema);
                 if (formHtml) {
                     renderDeterministicNode(title, formHtml);
                     return;
                 }
             } else {
-                // No params needed — execute directly
                 executeToolDirect(itemId, {}, title);
                 return;
             }
         }
 
-        // Fall through to LLM path for non-tool cards
-        const looksLikeTool = itemId && (itemId.includes('__') || itemId.includes('mcp_'));
-        drillDownToolHint = looksLikeTool ? { toolName: itemId, title } : null;
-        promptInput.value = getDrillDownPrompt(title, status, itemId);
-        handleSubmit(title);
+        // For non-tool cards, show info message
+        renderDeterministicNode(title,
+            '<burnish-card title="Use the tools above" status="info" body="Select a server, browse its tools, and fill forms to execute them directly."></burnish-card>'
+        );
     });
 
     // ── Table row explore click ──
@@ -1409,7 +935,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const title = row.full_name || row.name || row.title || row.login || 'Details';
 
-        // Build detail card from row data (filter out objects and long strings)
         const meta = Object.entries(row)
             .filter(([k, v]) => v != null && typeof v !== 'object' && String(v).length < 200 && k !== '__itemIndex')
             .slice(0, 8)
@@ -1417,7 +942,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         let html = `<burnish-card title="${escapeAttr(title)}" status="info" body="${escapeAttr(row.description || row.body || '')}" meta='${escapeAttr(JSON.stringify(meta))}'></burnish-card>`;
 
-        // Generate contextual actions for this specific item
         const actions = generateContextualActionsForItem(row);
         if (actions.length > 0) {
             html += `<burnish-actions actions='${escapeAttr(JSON.stringify(actions))}'></burnish-actions>`;
@@ -1429,21 +953,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderDeterministicNode(title, html);
     });
 
-    // ── Form submission (direct execution for read tools, LLM for write tools) ──
+    // ── Form submission (direct execution) ──
     container.addEventListener('burnish-form-submit', async (e) => {
         const { toolId, values } = e.detail || {};
         if (!toolId) return;
 
-        // Branch from the node containing this form
         const nodeEl = e.target.closest('.burnish-node');
         if (nodeEl?.dataset?.nodeId) branchFromNodeId = nodeEl.dataset.nodeId;
 
-        // Determine if this is a write tool (same heuristic as server-side guard)
         const bareToolName = toolId.replace(/^mcp__\w+__/, '');
         const isWrite = /^(create|update|delete|remove|push|write|edit|move|fork|merge|add|set|close|lock|assign)/i.test(bareToolName);
 
         if (isWrite) {
-            // Write tools: confirm then execute directly with confirmed flag
             const toolShortName = (toolId.split('__').pop() || toolId).replace(/_/g, ' ');
             if (!confirm(`Execute write operation: ${toolShortName}?`)) return;
 
@@ -1476,94 +997,73 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        if (true) {
-            // Direct execution — bypass LLM entirely for read tools
-            try {
-                const res = await fetch('/api/tools/execute', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ toolName: toolId, args: values }),
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Execution failed');
+        // Read tools — execute directly
+        try {
+            const res = await fetch('/api/tools/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ toolName: toolId, args: values }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Execution failed');
 
-                // Build display label
-                const toolShortName = (toolId.split('__').pop() || toolId).replace(/_/g, ' ');
-                const keyValues = Object.entries(values)
-                    .filter(([, v]) => v && String(v).trim())
-                    .slice(0, 3)
-                    .map(([, v]) => v)
-                    .join(', ');
-                const displayLabel = keyValues ? `${toolShortName}: ${keyValues}` : toolShortName;
+            const toolShortName = (toolId.split('__').pop() || toolId).replace(/_/g, ' ');
+            const keyValues = Object.entries(values)
+                .filter(([, v]) => v && String(v).trim())
+                .slice(0, 3)
+                .map(([, v]) => v)
+                .join(', ');
+            const displayLabel = keyValues ? `${toolShortName}: ${keyValues}` : toolShortName;
 
-                // Create a navigation node for the result
-                const nodeId = generateId();
-                const session = getActiveSession();
-                if (!session) return;
+            const nodeId = generateId();
+            const session = getActiveSession();
+            if (!session) return;
 
-                const parentId = branchFromNodeId || session.activeNodeId || (session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null);
+            const parentId = branchFromNodeId || session.activeNodeId || (session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null);
 
-                const node = {
-                    id: nodeId,
-                    prompt: `${toolShortName}: ${keyValues}`,
-                    promptDisplay: displayLabel,
-                    response: '',
-                    type: 'components',
-                    timestamp: Date.now(),
-                    parentId,
-                    children: [],
-                    collapsed: false,
-                    tags: [],
-                    summary: displayLabel,
-                };
-                node._executionMode = 'deterministic';
-                node._toolCall = { toolName: toolId, args: { ...values }, label: displayLabel };
+            const node = {
+                id: nodeId,
+                prompt: `${toolShortName}: ${keyValues}`,
+                promptDisplay: displayLabel,
+                response: '',
+                type: 'components',
+                timestamp: Date.now(),
+                parentId,
+                children: [],
+                collapsed: false,
+                tags: [],
+                summary: displayLabel,
+            };
+            node._executionMode = 'deterministic';
+            node._toolCall = { toolName: toolId, args: { ...values }, label: displayLabel };
 
-                // Add to parent's children
-                if (parentId) {
-                    const parent = session.nodes.find(n => n.id === parentId);
-                    if (parent) parent.children.push(nodeId);
-                }
-                session.nodes.push(node);
-                session.activeNodeId = nodeId;
-
-                renderMainContent();
-
-                // Render result with deterministic component mapping
-                const resultHtml = buildResultHtml(data.result, displayLabel, toolId);
-
-                node.response = resultHtml;
-                const contentEl = document.querySelector(`[data-node-id="${nodeId}"] .burnish-node-content`);
-                if (contentEl) {
-                    const clean = DOMPurify.sanitize(resultHtml, PURIFY_CONFIG);
-                    contentEl.innerHTML = clean;
-                }
-
-                updateBreadcrumb();
-                renderSessionList();
-                await saveState();
-                branchFromNodeId = null;
-                return;
-            } catch (err) {
-                console.error('Direct execution failed, falling back to LLM:', err.message);
-                // Fall through to LLM path below
+            if (parentId) {
+                const parent = session.nodes.find(n => n.id === parentId);
+                if (parent) parent.children.push(nodeId);
             }
-        }
+            session.nodes.push(node);
+            session.activeNodeId = nodeId;
 
-        // Fallback: go through LLM chat if direct execution failed
-        const params = Object.entries(values)
-            .filter(([, v]) => v && String(v).trim())
-            .map(([k, v]) => `${k}="${v}"`)
-            .join(', ');
-        promptInput.value = `Call the tool ${toolId} with these exact parameters: ${params}. Show the result using burnish-* components.`;
-        const keyValues2 = Object.entries(values)
-            .filter(([, v]) => v && String(v).trim())
-            .slice(0, 3)
-            .map(([, v]) => v)
-            .join(', ');
-        const toolName2 = (toolId.split('__').pop() || toolId).replace(/_/g, ' ');
-        const displayLabel2 = keyValues2 ? `${toolName2}: ${keyValues2}` : toolName2;
-        handleSubmit(displayLabel2);
+            renderMainContent();
+
+            const resultHtml = buildResultHtml(data.result, displayLabel, toolId);
+            node.response = resultHtml;
+            const contentEl = document.querySelector(`[data-node-id="${nodeId}"] .burnish-node-content`);
+            if (contentEl) {
+                const clean = DOMPurify.sanitize(resultHtml, PURIFY_CONFIG);
+                contentEl.innerHTML = clean;
+            }
+
+            updateBreadcrumb();
+            renderSessionList();
+            await saveState();
+            branchFromNodeId = null;
+            return;
+        } catch (err) {
+            console.error('Direct execution failed:', err.message);
+            const toolShortName = (toolId.split('__').pop() || toolId).replace(/_/g, ' ');
+            renderDeterministicNode(toolShortName, `<burnish-card title="Error" status="error" body="${escapeAttr(err.message)}"></burnish-card>`);
+        }
     });
 
     // ── Action bar clicks ──
@@ -1582,7 +1082,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const hasRequiredUnfilled = schema?.required?.some(k => !parsed.args[k]);
 
                 if (hasRequiredUnfilled && schema) {
-                    // Show form with pre-filled values
                     const formHtml = generateFallbackForm(parsed.toolName, schema);
                     renderDeterministicNode(label, formHtml);
                 } else {
@@ -1590,51 +1089,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 return;
             }
-        } catch { /* not JSON, fall through to existing handler */ }
+        } catch { /* not JSON, fall through */ }
 
-        // Existing LLM action handler
-        promptInput.value = prompt + '. Use ONLY burnish-* web components.';
-        const contextSummary = prompt.split(/[.!]/)[0].substring(0, 60);
-        const displayLabel = contextSummary.length > label.length ? contextSummary : label;
-
-        // Set branch point to the node containing this action bar
-        const nodeEl = e.target.closest('.burnish-node');
-        if (nodeEl?.dataset?.nodeId) {
-            branchFromNodeId = nodeEl.dataset.nodeId;
-        }
-
-        handleSubmit(displayLabel);
-    });
-
-    // ── Form field lookups ──
-    container.addEventListener('burnish-form-lookup', async (e) => {
-        const { fieldKey, prompt, query, context } = e.detail || {};
-        const formEl = e.target;
-        if (!formEl || !fieldKey) return;
-
-        // Build contextual prompt with other field values
-        const queryClause = query ? ` matching "${query}"` : '';
-        let contextClause = '';
-        if (context && Object.keys(context).length > 0) {
-            const parts = Object.entries(context).map(([k, v]) => `${k}="${v}"`);
-            contextClause = `. Other fields already filled: ${parts.join(', ')}. Use these to narrow the search where relevant`;
-        }
-
-        formEl.setLookupStatus(`Searching${query ? ` for "${query}"` : ''}...`);
-
-        try {
-            const res = await fetch('/api/lookup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    prompt: `${prompt}${queryClause}${contextClause}. Call the appropriate tool to get real results. Return ONLY a JSON array of objects with "value" and "label" string fields. No markdown, no code fences, no explanation — just the raw JSON array. Example: [{"value":"item1","label":"item1 (Description)"}]. Limit to 10 results.`,
-                }),
-            });
-            const data = await res.json();
-            formEl.setLookupResults(fieldKey, data.results || []);
-        } catch (err) {
-            formEl.setLookupResults(fieldKey, []);
-        }
+        // Non-deterministic action — show hint
+        renderDeterministicNode(label,
+            '<burnish-card title="Use the tools above" status="info" body="Select a server, browse its tools, and fill forms to execute them directly."></burnish-card>'
+        );
     });
 
     // ── Browser history ──
@@ -1642,13 +1102,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.state?.nodeId) scrollToNode(e.state.nodeId);
     });
 
-    // ── LLM availability check ──
-    fetch('/api/models').then(r => r.json()).then(data => {
-        window._llmAvailable = data.models && data.models.length > 0;
-    }).catch(() => { window._llmAvailable = false; });
-
     // ── Submit handler ──
-    async function handleSubmit(displayLabel, noTools) {
+    function handleSubmit(displayLabel) {
         const prompt = promptInput.value.trim();
         if (!prompt) {
             promptInput.classList.add('burnish-prompt-shake');
@@ -1659,363 +1114,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             }, { once: true });
             return;
         }
-        // If no LLM backend and this isn't a deterministic path, show message
-        if (!window._llmAvailable && !noTools) {
-            renderDeterministicNode(displayLabel || prompt.substring(0, 40),
-                `<burnish-card title="LLM not configured" status="warning" body="${escapeAttr('Free-text queries require an LLM. Use the tool buttons above for deterministic browsing, or configure a model in the dropdown.')}"></burnish-card>`
-            );
-            promptInput.value = '';
-            promptInput.style.height = '';
-            return;
-        }
-
         promptInput.value = '';
         promptInput.style.height = '';
-
-        let session = getActiveSession();
-        if (!session) { await createSession(); session = getActiveSession(); }
-
-        // Remove empty state
-        const emptyState = container.querySelector('.burnish-empty-state');
-        if (emptyState) emptyState.remove();
-
-        // Create new node — attach to branch point or last leaf
-        const nodeId = generateId();
-        let parentId = null;
-        if (branchFromNodeId) {
-            parentId = branchFromNodeId;
-            branchFromNodeId = null; // consume
-        } else if (session.activeNodeId) {
-            parentId = session.activeNodeId;
-        } else if (session.nodes.length > 0) {
-            parentId = session.nodes[session.nodes.length - 1].id;
-        }
-
-        // Store the user's original input for display (before context augmentation)
-        const userPrompt = prompt;
-
-        const node = {
-            id: nodeId,
-            parentId,
-            children: [],
-            prompt: userPrompt,
-            promptDisplay: displayLabel || (userPrompt.length > 60 ? userPrompt.substring(0, 60) + '...' : userPrompt),
-            _hasExplicitLabel: !!displayLabel,
-            response: '',
-            type: 'text',
-            summary: '',
-            tags: [],
-            stats: null,
-            timestamp: Date.now(),
-            collapsed: false,
-            _toolHint: drillDownToolHint,
-            _progressLog: [],
-            _componentLog: [],
-        };
-        drillDownToolHint = null; // consume
-
-        // Update parent's children array
-        if (parentId) {
-            const parent = getNodeById(session, parentId);
-            if (parent) {
-                if (!parent.children) parent.children = [];
-                if (!parent.children.includes(nodeId)) parent.children.push(nodeId);
-            }
-        }
-
-        session.nodes.push(node);
-        session.activeNodeId = nodeId;
-        session.updatedAt = Date.now();
-
-        // Auto-title session from first prompt
-        if (session.nodes.length === 1) {
-            session.title = node.promptDisplay;
-            renderSessionList();
-        }
-
-        // Re-render the full tree (handles branching layout)
-        renderMainContent();
-
-        // Get the newly created node's content area
-        const nodeEl = document.querySelector(`.burnish-node[data-node-id="${nodeId}"]`);
-        const contentEl = nodeEl?.querySelector('.burnish-node-content');
-        if (contentEl) contentEl.innerHTML = getProgressHtml();
-        if (nodeEl) nodeEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-        addNodeSpinner(nodeId);
-        updateNodeStatus(nodeId, 'Submitting…');
-
-        submitBtn.classList.add('cancel');
-        submitBtn.innerHTML = ICON_STOP;
-
-        let renderedCount = 0;
-        let streamingStarted = false;
-        const containerStack = [];
-
-        history.pushState({ nodeId }, '');
-
-        // Build ancestry context so the LLM knows the path that led here
-        let contextualPrompt = prompt;
-        if (node.parentId) {
-            const ancestry = getAncestryPath(session, node.parentId);
-            const contextParts = ancestry
-                .filter(n => n.response)
-                .slice(-3)  // last 3 ancestors max to avoid huge prompts
-                .map(n => `Previous step "${n.promptDisplay}": ${(n.response || '').substring(0, 200)}`)
-                .join('\n');
-            if (contextParts) {
-                contextualPrompt = `Context from previous steps:\n${contextParts}\n\nCurrent request: ${prompt}`;
-            }
-        }
-
-        submitPrompt(
-            contextualPrompt,
-            session.conversationId,
-            // onChunk
-            (chunk, fullText) => {
-                const trimmed = fullText.trim();
-                if (containsBurnishTags(trimmed)) {
-                    if (!streamingStarted) {
-                        streamingStarted = true;
-                        stopProgressTimer();
-                        contentEl.innerHTML = '';
-                        node.type = 'components';
-                    }
-                    // Strip any preamble text before the first burnish tag
-                    const componentStart = trimmed.indexOf('<burnish-');
-                    const componentHtml = componentStart > 0 ? trimmed.substring(componentStart) : trimmed;
-                    const elements = findStreamElements(componentHtml);
-                    while (renderedCount < elements.length) {
-                        const el = elements[renderedCount];
-                        appendElement(contentEl, containerStack, el);
-                        if (el.tagName && el.tagName.startsWith('burnish-') && el.type === 'leaf') {
-                            node._componentLog.push({ tag: el.tagName, timestamp: Date.now() });
-                            updateNodeStatus(nodeId, `Rendering ${el.tagName}…`);
-                        }
-                        renderedCount++;
-                    }
-                }
-                // Don't render plain text during streaming — buffer it.
-                // If the stream ends without burnish tags, onDone renders it as text.
-            },
-            // onDone
-            async (fullText, newConversationId) => {
-                stopProgressTimer();
-                removeNodeSpinner(nodeId);
-                removeNodeStatus(nodeId);
-                submitBtn.classList.remove('cancel');
-                submitBtn.innerHTML = ICON_SEND;
-                promptInput.disabled = false;
-                promptInput.focus();
-
-                session.conversationId = newConversationId;
-
-                const trimmed = fullText.trim();
-                node.response = trimmed;
-                node.type = containsBurnishTags(trimmed) ? 'components' : 'text';
-
-                // Score the response quality
-                const score = scoreResponse(node.response || '');
-                node._qualityScore = score.total;
-
-                if (!trimmed) {
-                    contentEl.innerHTML = '<div class="burnish-text-response" style="color: var(--burnish-text-muted, #9ca3af); font-style: italic;">No response received. Try regenerating.</div>';
-                    node.type = 'text';
-                    updateNodeSummary(nodeId);
-                    updateBreadcrumb();
-                    renderSessionList();
-                    await saveState();
-                    return;
-                }
-
-                if (containsBurnishTags(trimmed)) {
-                    // Always apply transformOutput on completion to ensure
-                    // color normalization rules run (streaming bypasses them)
-                    contentEl.innerHTML = '';
-                    const clean = transformOutput(DOMPurify.sanitize(extractContent(trimmed), PURIFY_CONFIG));
-                    const temp = document.createElement('template');
-                    temp.innerHTML = clean;
-                    contentEl.appendChild(temp.content);
-                } else {
-                    // Fallback: if the LLM returned plain text but this was a tool
-                    // drill-down with required params, auto-generate a form from the schema
-                    let fallbackHtml = null;
-                    if (node._toolHint) {
-                        const schema = toolSchemaCache[node._toolHint.toolName];
-                        if (schema && schema.properties && Object.keys(schema.properties).length > 0) {
-                            fallbackHtml = generateFallbackForm(node._toolHint.toolName, schema);
-                        }
-                    }
-                    // Second fallback: for suggestion buttons (no _toolHint),
-                    // scan toolSchemaCache for a tool whose name matches the prompt
-                    if (!fallbackHtml && !node._toolHint && Object.keys(toolSchemaCache).length > 0) {
-                        const promptLower = node.prompt.toLowerCase();
-                        let bestMatch = null;
-                        let bestScore = 0;
-                        for (const [toolName, schema] of Object.entries(toolSchemaCache)) {
-                            if (!schema || !schema.properties || Object.keys(schema.properties).length === 0) continue;
-                            // Score by how many words from the tool name appear in the prompt
-                            const words = toolName.replace(/^mcp__\w+__/, '').split(/[_\s-]+/).filter(w => w.length > 2);
-                            const score = words.filter(w => promptLower.includes(w.toLowerCase())).length;
-                            if (score > bestScore) {
-                                bestScore = score;
-                                bestMatch = { toolName, schema };
-                            }
-                        }
-                        if (bestMatch && bestScore >= 1) {
-                            fallbackHtml = generateFallbackForm(bestMatch.toolName, bestMatch.schema);
-                        }
-                    }
-                    if (fallbackHtml) {
-                        contentEl.innerHTML = '';
-                        const clean = transformOutput(DOMPurify.sanitize(fallbackHtml, PURIFY_CONFIG));
-                        const temp = document.createElement('template');
-                        temp.innerHTML = clean;
-                        contentEl.appendChild(temp.content);
-                        node.response = fallbackHtml;
-                        node.type = 'components';
-                    } else {
-                        contentEl.innerHTML = `<div class="burnish-text-response">${renderMarkdown(trimmed)}</div>`;
-                    }
-                }
-
-                updateNodeSummary(nodeId);
-                updateBreadcrumb();
-                renderSessionList();
-                await saveState();
-
-                // Auto-title: after first node completes, request an LLM-generated title
-                // if available, otherwise keep the prompt-based title from node creation
-                if (session.nodes.length === 1 && window._llmAvailable) {
-                    fetch('/api/title', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            prompt: node.promptDisplay,
-                            response: (trimmed || '').slice(0, 500),
-                        }),
-                    })
-                        .then(r => r.json())
-                        .then(async (data) => {
-                            if (data.title) {
-                                session.title = data.title;
-                                renderSessionList();
-                                await saveState();
-                            }
-                        })
-                        .catch(() => { /* keep truncated title as fallback */ });
-                }
-            },
-            // onError
-            async (error) => {
-                stopProgressTimer();
-                removeNodeSpinner(nodeId);
-                removeNodeStatus(nodeId);
-                submitBtn.classList.remove('cancel');
-                submitBtn.innerHTML = ICON_SEND;
-                promptInput.disabled = false;
-                contentEl.innerHTML = `<div class="burnish-text-response" style="color: var(--burnish-error, #ef4444);">Error: ${escapeHtml(error)}</div>`;
-                node.response = error;
-                node.type = 'text';
-                node.summary = 'Error';
-                node.tags = ['error'];
-                updateNodeSummary(nodeId);
-                await saveState();
-            },
-            // onProgress
-            (stage, detail, meta) => {
-                updateProgress(contentEl, stage, detail);
-                let statusText = detail || stage;
-                if (meta?.server) statusText += ` (${meta.server})`;
-                else if (meta?.model) statusText += ` (${meta.model})`;
-                updateNodeStatus(nodeId, statusText);
-                node._progressLog.push({ stage, detail, meta, timestamp: Date.now() });
-            },
-            // onStats
-            async (stats) => {
-                node.stats = stats;
-                updateNodeHeader(nodeId);
-                await saveState();
-            },
-            // onWorkflowTrace
-            (steps) => {
-                updateWorkflowTrace(contentEl, steps);
-            },
-            noTools
+        renderDeterministicNode(displayLabel || prompt.substring(0, 40),
+            '<burnish-card title="Use the tools above" status="info" body="Select a server, browse its tools, and fill forms to execute them directly. No LLM needed."></burnish-card>'
         );
-
-        promptInput.disabled = true;
-        updateBreadcrumb();
     }
 });
-
-// ── Workflow Trace (cross-server pipeline indicator) ──
-
-function updateWorkflowTrace(contentEl, steps) {
-    if (!steps || steps.length === 0) return;
-    // Only show trace when tools span multiple servers
-    const servers = new Set(steps.map(s => s.server));
-    if (servers.size < 2) return;
-
-    let traceEl = contentEl.querySelector('.burnish-workflow-trace');
-    if (!traceEl) {
-        traceEl = document.createElement('div');
-        traceEl.className = 'burnish-workflow-trace';
-        // Insert before the progress trail
-        const progressEl = contentEl.querySelector('.burnish-progress');
-        if (progressEl) {
-            progressEl.parentNode.insertBefore(traceEl, progressEl);
-        } else {
-            contentEl.prepend(traceEl);
-        }
-    }
-
-    traceEl.innerHTML = steps.map((step, i) => {
-        const statusClass = step.status === 'running' ? 'running'
-            : step.status === 'success' ? 'success'
-            : step.status === 'error' ? 'error'
-            : 'pending';
-        const arrow = i < steps.length - 1 ? '<span class="burnish-trace-arrow">\u2192</span>' : '';
-        return `<span class="burnish-trace-step ${statusClass}">` +
-            `<span class="burnish-trace-dot"></span>` +
-            `<span class="burnish-trace-server">${escapeHtml(step.server)}</span>` +
-            `<span class="burnish-trace-tool">${escapeHtml(step.tool)}</span>` +
-            `</span>${arrow}`;
-    }).join('');
-}
-
-// ── SSE Streaming (via StreamOrchestrator) ──
-
-function submitPrompt(prompt, existingConversationId, onChunk, onDone, onError, onProgress, onStats, onWorkflowTrace, noTools) {
-    streamOrchestrator.submitPrompt(
-        '', // same origin
-        prompt,
-        existingConversationId,
-        selectedModel || undefined,
-        { onChunk, onDone, onError, onProgress, onStats, onWorkflowTrace },
-        noTools,
-    ).catch(onError);
-}
-
-// ── Stream Helpers (wrapping @burnish/renderer) ──
-
-function sanitizeHtml(html) {
-    return DOMPurify.sanitize(html, PURIFY_CONFIG);
-}
-
-function appendElement(root, stack, element) {
-    appendStreamElement(root, stack, element, SAFE_ATTRS, sanitizeHtml);
-}
-
-function extractContent(text) {
-    return extractHtmlContent(text, 'burnish-', renderMarkdown);
-}
-
-// transformOutput is imported from @burnish/app
-
-// generateFallbackForm is imported from @burnish/app
-
-// getDrillDownPrompt and isWriteTool are imported from @burnish/app
 
 // ── Helpers ──
 function renderMarkdown(text) {
@@ -2048,10 +1153,9 @@ function getEmptyState() {
     `;
 }
 
-// ── Deterministic Rendering Helpers (no LLM required) ──
+// ── Deterministic Rendering Helpers ──
 
 function generateToolListingHtml(serverName, tools) {
-    // Group tools by verb prefix
     const groups = {};
     for (const tool of tools) {
         const verb = tool.name.split(/[_\-]/)[0] || 'other';
@@ -2059,7 +1163,6 @@ function generateToolListingHtml(serverName, tools) {
         groups[verb].push(tool);
     }
 
-    // Build stat-bar
     const statItems = Object.entries(groups).map(([verb, items]) => ({
         label: verb.charAt(0).toUpperCase() + verb.slice(1),
         value: String(items.length),
@@ -2067,7 +1170,6 @@ function generateToolListingHtml(serverName, tools) {
     }));
     let html = `<burnish-stat-bar items='${escapeAttr(JSON.stringify(statItems))}'></burnish-stat-bar>`;
 
-    // Build sections with cards
     for (const [verb, items] of Object.entries(groups)) {
         const label = verb.charAt(0).toUpperCase() + verb.slice(1) + ' Operations';
         html += `<burnish-section label="${escapeAttr(label)}" count="${items.length}" status="info">`;
@@ -2117,7 +1219,6 @@ function renderDeterministicToolListing(serverName, tools) {
         session.title = `${serverName} tools`;
     }
 
-    // Remove empty state if present
     const emptyState = document.getElementById('main-content')?.querySelector('.burnish-empty-state');
     if (emptyState) emptyState.remove();
 
@@ -2161,7 +1262,6 @@ function renderDeterministicNode(label, html) {
         session.title = label.substring(0, 60);
     }
 
-    // Remove empty state if present
     const container = document.getElementById('main-content');
     const emptyState = container?.querySelector('.burnish-empty-state');
     if (emptyState) emptyState.remove();
@@ -2206,11 +1306,10 @@ function buildResultHtml(result, label, sourceToolName) {
 
 function generateContextualActions(resultData, sourceToolName) {
     if (!sourceToolName) return [];
-    // Ensure cachedServers is populated
     if (!cachedServers) {
         try {
             const xhr = new XMLHttpRequest();
-            xhr.open('GET', '/api/servers', false); // Synchronous fetch
+            xhr.open('GET', '/api/servers', false);
             xhr.send();
             if (xhr.status === 200) {
                 const data = JSON.parse(xhr.responseText);
@@ -2227,10 +1326,8 @@ function generateContextualActions(resultData, sourceToolName) {
     const firstItem = items[0];
     const actions = [];
 
-    // Find the server that owns this tool
     let serverName = sourceToolName.replace(/^mcp__/, '').split('__')[0];
     let server = cachedServers?.find(s => s.name === serverName);
-    // Fallback: if no match (short tool name), find server that has this tool
     if (!server && cachedServers) {
         const shortName = sourceToolName.replace(/^mcp__\w+__/, '');
         for (const s of cachedServers) {
@@ -2243,7 +1340,6 @@ function generateContextualActions(resultData, sourceToolName) {
     }
     if (!server) return actions;
 
-    // For items with owner/repo fields (GitHub repos)
     if (firstItem.full_name && firstItem.full_name.includes('/')) {
         const [owner, repo] = firstItem.full_name.split('/');
         for (const tool of server.tools) {
@@ -2262,9 +1358,7 @@ function generateContextualActions(resultData, sourceToolName) {
         }
     }
 
-    // For items with path field (filesystem)
     if (firstItem.path || firstItem.name) {
-        // Add "explore" action for filesystem items
         for (const tool of server.tools) {
             const props = tool.inputSchema?.properties || {};
             if (props.path && !sourceToolName.includes(tool.name) && /^(list|read|get|directory)/.test(tool.name)) {
@@ -2278,7 +1372,6 @@ function generateContextualActions(resultData, sourceToolName) {
         }
     }
 
-    // Sort: read actions first, then write actions
     actions.sort((a, b) => {
         if (a.action === 'read' && b.action !== 'read') return -1;
         if (a.action !== 'read' && b.action === 'read') return 1;
@@ -2288,7 +1381,6 @@ function generateContextualActions(resultData, sourceToolName) {
 }
 
 function generateContextualActionsForItem(item) {
-    // Ensure cachedServers
     if (!cachedServers) {
         try {
             const xhr = new XMLHttpRequest();
@@ -2307,7 +1399,6 @@ function generateContextualActionsForItem(item) {
             const args = {};
             let matchCount = 0;
 
-            // Auto-fill params from item fields
             if (props.owner && item.full_name && item.full_name.includes('/')) {
                 args.owner = item.full_name.split('/')[0];
                 matchCount++;
@@ -2347,7 +1438,6 @@ function renderParsedResult(parsed, label, sourceToolName) {
             return `<burnish-card title="${escapeAttr(label)}" status="muted" body="No results"></burnish-card>`;
         }
         if (typeof parsed[0] === 'object') {
-            // Array of objects → table with smart column selection
             const allKeys = Object.keys(parsed[0]);
             const preferred = ['name','full_name','title','login','description','language',
                 'stargazers_count','stars','state','status','path','size','type',
@@ -2379,7 +1469,6 @@ function renderParsedResult(parsed, label, sourceToolName) {
     }
 
     if (typeof parsed === 'object' && parsed !== null) {
-        // Wrapper pattern: object with a nested array (items, results, data, etc.)
         const arrayKeys = ['items','results','data','entries','records','rows','nodes',
             'repositories','issues','files','commits','pull_requests','comments'];
         const nestedKey = arrayKeys.find(k => Array.isArray(parsed[k]) && parsed[k].length > 0);
@@ -2395,12 +1484,10 @@ function renderParsedResult(parsed, label, sourceToolName) {
                 }));
                 html += `<burnish-stat-bar items='${escapeAttr(JSON.stringify(statItems))}'></burnish-stat-bar>`;
             }
-            // Pass original sourceToolName (not nestedKey) so contextual actions can find the server
             html += renderParsedResult(parsed[nestedKey], nestedKey, sourceToolName);
             return html;
         }
 
-        // Simple object → card with meta (filter out nested objects to avoid [object Object])
         const meta = Object.entries(parsed)
             .filter(([, v]) => typeof v !== 'object' || v === null)
             .slice(0, 10)
@@ -2416,10 +1503,8 @@ async function loadDynamicSuggestions(container) {
         const res = await fetch('/api/servers');
         const { servers } = await res.json();
 
-        // Cache servers for deterministic rendering
         cachedServers = servers;
 
-        // Populate tool schema cache for fallback form generation
         for (const s of servers) {
             for (const tool of s.tools) {
                 if (tool.inputSchema) {
@@ -2429,28 +1514,22 @@ async function loadDynamicSuggestions(container) {
             }
         }
 
-        // Render connected server buttons
         const serverBtns = container.querySelector('#server-buttons');
         if (serverBtns) {
             if (servers.length === 0) {
                 serverBtns.innerHTML = '<span class="burnish-no-servers">No servers connected</span>';
             } else {
-                serverBtns.innerHTML = servers.map(s => {
-                    const toolList = s.tools.slice(0, 15).map(t => t.name).join(', ');
-                    const moreText = s.tools.length > 15 ? ` and ${s.tools.length - 15} more` : '';
-                    const prompt = `You have access to a ${s.name} server with these operations: ${toolList}${moreText}. Generate a burnish-card for each operation showing its name and a brief description. Do NOT call any tools. Just output burnish-card HTML components describing what each operation does.`;
-                    return `
-                    <button class="burnish-suggestion burnish-suggestion-server" data-prompt="${escapeAttr(prompt)}" data-label="${escapeAttr(s.name)}" data-no-tools="true">
+                serverBtns.innerHTML = servers.map(s => `
+                    <button class="burnish-suggestion burnish-suggestion-server" data-label="${escapeAttr(s.name)}">
                         <span class="burnish-server-status ${s.status === 'connected' ? 'connected' : 'disconnected'}"></span>
                         ${escapeHtml(s.name)}
                         <span class="burnish-suggestion-sub">${s.toolCount} tools</span>
                     </button>
-                `;
-                }).join('');
+                `).join('');
             }
         }
 
-        // Generate tool shortcuts — max 2 per server, prefer diverse verbs
+        // Generate tool shortcuts
         const readPattern = /^(list|search|get|find|query|browse|fetch|describe|directory)/;
         const shortcuts = [];
         for (const s of servers) {
@@ -2465,10 +1544,27 @@ async function loadDynamicSuggestions(container) {
                 const label = firstSentence
                     ? firstSentence.substring(0, 40) + (firstSentence.length > 40 ? '...' : '')
                     : tool.name.replace(/_/g, ' ');
-                shortcuts.push({
-                    label,
-                    prompt: `${tool.description || tool.name}. Show results using burnish-* components.`,
-                });
+
+                // Determine if tool has required params
+                const schema = tool.inputSchema;
+                const hasRequired = schema?.required?.length > 0;
+                const hasParams = schema?.properties && Object.keys(schema.properties).length > 0;
+
+                if (hasRequired || hasParams) {
+                    // Show form for tools with parameters
+                    shortcuts.push({
+                        label,
+                        tool: tool.name,
+                        args: {},
+                    });
+                } else {
+                    // Execute directly for parameterless tools
+                    shortcuts.push({
+                        label,
+                        tool: tool.name,
+                        args: {},
+                    });
+                }
                 countForServer++;
             }
         }
@@ -2479,29 +1575,27 @@ async function loadDynamicSuggestions(container) {
                 toolSection.innerHTML = '';
             } else {
                 toolSection.innerHTML = shortcuts.map(s => `
-                    <button class="burnish-suggestion" data-prompt="${escapeAttr(s.prompt)}" data-label="${escapeAttr(s.label)}">
+                    <button class="burnish-suggestion" data-tool="${escapeAttr(s.tool)}" data-args="${escapeAttr(JSON.stringify(s.args))}" data-label="${escapeAttr(s.label)}">
                         ${escapeHtml(s.label)}
                     </button>
                 `).join('');
             }
         }
 
-        // Render curated starter prompt chips based on connected server types
+        // Render curated starter prompt chips
         const starterSection = container.querySelector('#starter-prompts');
         if (starterSection && servers.length > 0) {
             const starters = [];
             for (const s of servers) {
                 const serverPrompts = STARTER_PROMPTS[s.name] || STARTER_PROMPTS._default;
-                starters.push(...serverPrompts.slice(0, 2)); // Max 2 per server
+                starters.push(...serverPrompts.slice(0, 2));
             }
             const limited = starters.slice(0, 6);
             if (limited.length > 0) {
                 starterSection.innerHTML = limited.map(s => {
-                    // Resolve tool name to full MCP-prefixed name if needed
                     let toolAttr = '';
                     let argsAttr = '';
                     if (s.tool) {
-                        // Find the full tool name from cache (may be prefixed with mcp__server__)
                         const fullToolName = Object.keys(toolSchemaCache).find(k => k.endsWith(s.tool)) || s.tool;
                         toolAttr = ` data-tool="${escapeAttr(fullToolName)}"`;
                         argsAttr = ` data-args="${escapeAttr(JSON.stringify(s.args || {}))}"`;
@@ -2518,7 +1612,7 @@ async function loadDynamicSuggestions(container) {
 
         const hintEl = container.querySelector('#empty-hint');
         if (hintEl && servers.length > 0) {
-            hintEl.innerHTML = '<span class="burnish-hint-text">Try asking: "What tools do I have?" or "List my files"</span>';
+            hintEl.innerHTML = '<span class="burnish-hint-text">Click a server to browse its tools, or use the shortcuts above</span>';
         }
     } catch {
         const serverBtns = container.querySelector('#server-buttons');
@@ -2529,4 +1623,3 @@ async function loadDynamicSuggestions(container) {
         if (starterSection) starterSection.innerHTML = '';
     }
 }
-
