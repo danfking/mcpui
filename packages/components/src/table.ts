@@ -73,16 +73,16 @@ export class BurnishTable extends LitElement {
             <div class="table-container">
                 ${this.title ? html`<div class="table-title">${this.title}</div>` : ''}
                 <table>
-                    <thead><tr>${cols.map(c => html`<th>${c.label}</th>`)}<th></th></tr></thead>
+                    <thead><tr><th></th>${cols.map(c => html`<th>${c.label}</th>`)}</tr></thead>
                     <tbody>
                         ${data.map((row, index) => html`
                             <tr>
+                                <td><a class="explore-link" @click=${(e: Event) => this._onRowExplore(e, row, index)}>Explore →</a></td>
                                 ${cols.map(c => {
                                     const val = row[c.key];
                                     const isStatus = statusField && c.key === statusField;
                                     return html`<td class="${isStatus ? `status-${val}` : ''}">${val}</td>`;
                                 })}
-                                <td><a class="explore-link" @click=${(e: Event) => this._onRowExplore(e, row, index)}>Explore →</a></td>
                             </tr>
                         `)}
                     </tbody>
