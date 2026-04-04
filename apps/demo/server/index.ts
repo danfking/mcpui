@@ -349,21 +349,28 @@ app.post('/api/tools/execute', async (c) => {
         return c.json({ error: 'toolName is required' }, 400);
     }
 
-    // Check tool exists
+    // Check tool exists — handle both short names and fully-qualified mcp__server__tool names
     const allTools = mcpHub.getAllTools();
-    const tool = allTools.find(t => t.name === body.toolName);
+    let toolName = body.toolName;
+    let tool = allTools.find(t => t.name === toolName);
+    if (!tool) {
+        // Try stripping mcp__server__ prefix
+        const shortName = toolName.replace(/^mcp__\w+__/, '');
+        tool = allTools.find(t => t.name === shortName);
+        if (tool) toolName = shortName;
+    }
     if (!tool) {
         return c.json({ error: `Tool "${body.toolName}" not found` }, 404);
     }
 
     // Write tools require explicit confirmation from the frontend
-    if (isWriteTool(body.toolName) && !body.confirmed) {
+    if (isWriteTool(toolName) && !body.confirmed) {
         return c.json({ error: 'Write tool requires confirmation', requiresConfirmation: true }, 403);
     }
 
     try {
-        const result = await mcpHub.executeTool(body.toolName, body.args || {});
-        return c.json({ result, toolName: body.toolName, serverName: tool.serverName });
+        const result = await mcpHub.executeTool(toolName, body.args || {});
+        return c.json({ result, toolName, serverName: tool.serverName });
     } catch (err) {
         console.error('[burnish] Direct tool execution failed:', err);
         return c.json({ error: 'Tool execution failed' }, 500);
