@@ -115,6 +115,16 @@ async function createSession() {
     persistence.markLoaded(session.id);
     renderSessionList();
     renderMainContent();
+
+    // Reset submit button state in case it was stuck from a previous session
+    const submitBtn = document.getElementById('btn-submit');
+    if (submitBtn) {
+        submitBtn.classList.remove('cancel');
+        submitBtn.innerHTML = ICON_SEND;
+    }
+    const promptInput = document.getElementById('prompt-input');
+    if (promptInput) promptInput.disabled = false;
+
     await saveState();
 }
 
@@ -552,7 +562,7 @@ async function regenerateNode(nodeId) {
             submitBtn.classList.remove('cancel');
             submitBtn.innerHTML = ICON_SEND;
             promptInput.disabled = false;
-            contentEl.innerHTML = `<div class="burnish-text-response">Error: ${escapeHtml(error)}</div>`;
+            contentEl.innerHTML = `<div class="burnish-text-response" style="color: var(--burnish-error, #ef4444);">Error: ${escapeHtml(error)}</div>`;
             node.response = error;
             node.type = 'text';
             node.summary = 'Error';
@@ -1591,7 +1601,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 submitBtn.classList.remove('cancel');
                 submitBtn.innerHTML = ICON_SEND;
                 promptInput.disabled = false;
-                contentEl.innerHTML = `<div class="burnish-text-response">Error: ${escapeHtml(error)}</div>`;
+                contentEl.innerHTML = `<div class="burnish-text-response" style="color: var(--burnish-error, #ef4444);">Error: ${escapeHtml(error)}</div>`;
                 node.response = error;
                 node.type = 'text';
                 node.summary = 'Error';
