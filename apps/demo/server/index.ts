@@ -368,8 +368,26 @@ app.post('/api/tools/execute', async (c) => {
         return c.json({ error: 'Write tool requires confirmation', requiresConfirmation: true }, 403);
     }
 
+    // Coerce argument types based on tool schema (forms send everything as strings)
+    const args = { ...(body.args || {}) };
+    const schema = tool.inputSchema as { properties?: Record<string, { type?: string }> };
+    if (schema?.properties) {
+        for (const [key, prop] of Object.entries(schema.properties)) {
+            if (args[key] === undefined || args[key] === '') {
+                delete args[key]; // Remove empty optional params
+                continue;
+            }
+            if ((prop.type === 'number' || prop.type === 'integer') && typeof args[key] === 'string') {
+                const num = Number(args[key]);
+                if (!isNaN(num)) args[key] = num;
+            } else if (prop.type === 'boolean' && typeof args[key] === 'string') {
+                args[key] = args[key] === 'true';
+            }
+        }
+    }
+
     try {
-        const result = await mcpHub.executeTool(toolName, body.args || {});
+        const result = await mcpHub.executeTool(toolName, args);
         return c.json({ result, toolName, serverName: tool.serverName });
     } catch (err) {
         console.error('[burnish] Direct tool execution failed:', err);
