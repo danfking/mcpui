@@ -1773,7 +1773,7 @@ async function loadDynamicSuggestions(container) {
                 if (!readPattern.test(tool.name) || usedVerbs.has(verb)) continue;
                 usedVerbs.add(verb);
                 const label = tool.description
-                    ? tool.description.split(/[.!]/)[0].substring(0, 40)
+                    ? tool.description.split(/[.!]/)[0].substring(0, 40) + (tool.description.split(/[.!]/)[0].length > 40 ? '...' : '')
                     : tool.name.replace(/_/g, ' ');
                 shortcuts.push({
                     label,
