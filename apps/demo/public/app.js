@@ -484,6 +484,32 @@ async function regenerateNode(nodeId) {
         }
     }
 
+    // Fallback: try to infer tool from node prompt for legacy nodes without metadata
+    if (!node._toolCall && node.prompt) {
+        const promptLower = node.prompt.toLowerCase();
+        for (const [toolName, schema] of Object.entries(toolSchemaCache)) {
+            const shortName = toolName.replace(/^mcp__\w+__/, '');
+            const words = shortName.split(/[_\-]+/).filter(w => w.length > 2);
+            if (words.every(w => promptLower.includes(w))) {
+                // Extract args from prompt (text after colon)
+                const argsText = node.prompt.includes(':') ? node.prompt.split(':').slice(1).join(':').trim() : '';
+                const inferredArgs = {};
+                if (argsText && schema.properties) {
+                    const queryKeys = ['query', 'search', 'q', 'name', 'pattern'];
+                    const pathKeys = ['path', 'dir', 'directory'];
+                    for (const key of Object.keys(schema.properties)) {
+                        if (queryKeys.includes(key) && argsText) inferredArgs[key] = argsText;
+                        if (pathKeys.includes(key) && argsText) inferredArgs[key] = argsText;
+                    }
+                }
+                node._executionMode = 'deterministic';
+                node._toolCall = { toolName, args: inferredArgs, label: node.promptDisplay };
+                // Retry with inferred metadata
+                return regenerateNode(nodeId);
+            }
+        }
+    }
+
     // If no LLM available and not deterministic, show friendly message
     if (!window._llmAvailable) {
         const contentEl = document.querySelector(`[data-node-id="${nodeId}"] .burnish-node-content`);
