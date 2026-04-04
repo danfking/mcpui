@@ -321,7 +321,7 @@ export class BurnishForm extends LitElement {
                     </svg>
                     ${this.title || 'Form'}
                 </div>
-                <div class="form-body">
+                <div class="form-body" @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' && (e.target as HTMLElement)?.tagName !== 'TEXTAREA') this._handleSubmit(e); }}>
                     ${fields.map(f => html`
                         <div class="form-field">
                             <label class="form-label">
