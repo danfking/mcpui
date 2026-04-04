@@ -201,7 +201,7 @@ export class BurnishCard extends LitElement {
                         `)}
                     </div>
                 ` : ''}
-                <div class="card-action" role="button" tabindex="0">Explore \u2192</div>
+                ${this['item-id'] ? html`<div class="card-action" role="button" tabindex="0">Explore \u2192</div>` : ''}
             </div>
         `;
     }

@@ -1012,11 +1012,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const title = row.full_name || row.name || row.title || row.login || 'Details';
 
         const meta = Object.entries(row)
-            .filter(([k, v]) => v != null && typeof v !== 'object' && String(v).length < 200 && k !== '__itemIndex')
+            .filter(([k, v]) => v != null && typeof v !== 'object'
+                && !/_url$|^url$|node_id|_id$|avatar|gravatar/.test(k)
+                && !(typeof v === 'string' && v.startsWith('http'))
+                && String(v).length < 100 && k !== '__itemIndex')
             .slice(0, 8)
             .map(([k, v]) => ({ label: k.replace(/_/g, ' '), value: String(v) }));
 
-        let html = `<burnish-card title="${escapeAttr(title)}" status="info" body="${escapeAttr(row.description || row.body || '')}" meta='${escapeAttr(JSON.stringify(meta))}'></burnish-card>`;
+        const rawBody = row.description || row.body || '';
+        const body = stripMarkdown(String(rawBody)).substring(0, 300);
+        let html = `<burnish-card title="${escapeAttr(title)}" status="info" body="${escapeAttr(body)}" meta='${escapeAttr(JSON.stringify(meta))}'></burnish-card>`;
 
         const actions = generateContextualActionsForItem(row);
         if (actions.length > 0) {
