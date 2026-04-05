@@ -7,13 +7,13 @@
 (() => {
     const versionMeta = document.querySelector('meta[name="burnish-version"]');
     const buildVersion = versionMeta?.getAttribute('content') || '';
-    const storedVersion = localStorage.getItem('burnish:buildVersion');
-    if (buildVersion && storedVersion && storedVersion !== buildVersion) {
+    const prevBuster = localStorage.getItem('burnish:cacheBuster');
+    if (prevBuster && prevBuster !== buildVersion) {
         console.log('[burnish] Build version changed, clearing stale sessions');
         indexedDB.deleteDatabase('burnish-sessions');
         indexedDB.deleteDatabase('burnish-nodes');
     }
-    if (buildVersion) localStorage.setItem('burnish:buildVersion', buildVersion);
+    if (buildVersion) localStorage.setItem('burnish:cacheBuster', buildVersion);
 })();
 
 import {
@@ -24,20 +24,33 @@ import {
     generateSummary, formatTimeAgo,
 } from '@burnish/app';
 
+// ── Shared imports ──
+import { PURIFY_CONFIG, WRITE_TOOL_RE, escapeHtml, escapeAttr } from './shared.js';
+
+// ── View renderers ──
+import {
+    renderCardsView, renderTableView, renderJsonView,
+    renderViewSwitcher, renderParsedResult, buildResultHtml,
+} from './view-renderers.js';
+
+// ── Contextual actions ──
+import {
+    generateContextualActions, generateContextualActionsForItem,
+    setCachedServers, getCachedServers,
+} from './contextual-actions.js';
+
+// ── Deterministic UI ──
+import {
+    renderDeterministicToolListing, generateToolListingHtml,
+    renderDeterministicNode, executeToolDirect,
+    getEmptyState, setSessionHelpers,
+} from './deterministic-ui.js';
+
+// ── Copilot UI ──
+import { detectMode, getCurrentMode, renderModeToggle, createInsightSlot, streamInsight } from './copilot-ui.js';
+
 // ── Persistence ──
 const persistence = new SessionStore();
-
-// ── DOMPurify Config ──
-const PURIFY_CONFIG = {
-    ADD_TAGS: ['burnish-card', 'burnish-stat-bar', 'burnish-table', 'burnish-chart',
-               'burnish-section', 'burnish-metric', 'burnish-message', 'burnish-form', 'burnish-actions'],
-    ADD_ATTR: ['items', 'title', 'status', 'body', 'meta', 'columns', 'rows',
-               'status-field', 'type', 'config', 'role', 'content', 'class',
-               'label', 'count', 'collapsed', 'item-id', 'value', 'unit', 'trend',
-               'streaming', 'tool-id', 'fields', 'actions', 'color'],
-    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
-    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
-};
 
 const ICON_FOCUS = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4,1 1,1 1,4"/><polyline points="12,1 15,1 15,4"/><polyline points="4,15 1,15 1,12"/><polyline points="12,15 15,15 15,12"/></svg>`;
 const ICON_RESTORE = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="1,4 4,4 4,1"/><polyline points="12,1 12,4 15,4"/><polyline points="1,12 4,12 4,15"/><polyline points="12,15 12,12 15,12"/></svg>`;
@@ -64,7 +77,6 @@ function getActiveSession() {
 let branchFromNodeId = null;
 
 // Curated starter prompts per MCP server type
-// Each entry can have `tool`+`args` (deterministic path)
 const STARTER_PROMPTS = {
     filesystem: [
         { label: 'List my files', tool: 'list_directory', args: { path: '.' } },
@@ -81,8 +93,17 @@ const STARTER_PROMPTS = {
 // Cache of tool schemas keyed by tool name (populated from /api/servers)
 const toolSchemaCache = {};
 
-// Cache of server data from /api/servers (for deterministic rendering)
-let cachedServers = null;
+// ── Wire up session helpers for deterministic-ui module ──
+setSessionHelpers({
+    generateId,
+    getActiveSession,
+    getBranchFromNodeId: () => branchFromNodeId,
+    clearBranchFromNodeId: () => { branchFromNodeId = null; },
+    renderMainContent,
+    updateBreadcrumb,
+    renderSessionList,
+    saveState,
+});
 
 // ── Persistence (delegated to SessionStore) ──
 
@@ -94,7 +115,7 @@ async function loadState() {
     return persistence.load();
 }
 
-// ─�� Session CRUD ──
+// --- Session CRUD ---
 async function createSession() {
     const session = {
         id: generateId(),
@@ -164,12 +185,6 @@ async function deleteSession(sessionId) {
 }
 
 // ── Helpers ──
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 function updateBreadcrumb() {
     const breadcrumb = document.getElementById('breadcrumb');
     if (!breadcrumb) return;
@@ -393,6 +408,7 @@ async function regenerateNode(nodeId) {
     // Deterministic regeneration — re-execute the same tool call
     if (node._executionMode === 'deterministic' && node._toolCall) {
         if (node._toolCall.toolName === '__listing__') {
+            const cachedServers = getCachedServers();
             const serverData = cachedServers?.find(s => s.name === node._toolCall.args.serverName);
             if (serverData) {
                 node.response = '';
@@ -765,6 +781,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     updateBreadcrumb();
 
+    // Detect copilot availability and render toggle
+    const modeStatus = await detectMode();
+    const modeToggleContainer = document.getElementById('mode-toggle');
+    if (modeToggleContainer) renderModeToggle(modeToggleContainer);
+
     // Suggestion buttons
     document.addEventListener('click', (e) => {
         const btn = e.target.closest('.burnish-suggestion');
@@ -772,6 +793,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Handle action-based buttons (e.g., list-servers)
         if (btn.dataset.action === 'list-servers') {
+            const cachedServers = getCachedServers();
             if (cachedServers && cachedServers.length > 0) {
                 const first = cachedServers[0];
                 renderDeterministicToolListing(first.name, first.tools);
@@ -782,7 +804,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Deterministic tool execution for starter prompts with data-tool
         const starterTool = btn.dataset.tool;
         if (starterTool) {
-            const args = JSON.parse(btn.dataset.args || '{}');
+            let args = {};
+            try { args = JSON.parse(btn.dataset.args || '{}'); } catch { /* use empty args */ }
             executeToolDirect(starterTool, args, btn.dataset.label || starterTool);
             return;
         }
@@ -790,6 +813,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Deterministic server button — render tool listing
         if (btn.classList.contains('burnish-suggestion-server')) {
             const serverName = btn.dataset.label;
+            const cachedServers = getCachedServers();
             const serverData = cachedServers?.find(s => s.name === serverName);
             if (serverData && serverData.tools.length > 0) {
                 renderDeterministicToolListing(serverName, serverData.tools);
@@ -799,6 +823,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // For any other suggestion, show available servers
         if (btn.dataset.prompt) {
+            const cachedServers = getCachedServers();
             if (cachedServers && cachedServers.length > 0) {
                 const first = cachedServers[0];
                 renderDeterministicToolListing(first.name, first.tools);
@@ -907,7 +932,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Check for card view item reference (viewId:index format)
-        const cardRef = itemId?.match(/^(cv-\d+):(\d+)$/);
+        const cardRef = itemId?.match(/^((?:cv|vd)-[\w-]+):(\d+)$/);
         if (cardRef) {
             const item = window._cardItems?.[cardRef[1]]?.[parseInt(cardRef[2])];
             if (item && typeof item === 'object') {
@@ -930,7 +955,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const item = itemId ? JSON.parse(itemId) : null;
             if (item && typeof item === 'object') {
-                // Render detail card with contextual actions for this item
                 const meta = Object.entries(item)
                     .filter(([, v]) => typeof v !== 'object' && v != null && String(v).length < 200)
                     .slice(0, 8)
@@ -965,10 +989,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.classList.add('active');
 
         const contentEl = document.querySelector(`.burnish-view-content[data-view-id="${dataId}"]`);
-        if (!contentEl) return;
+        if (!contentEl) {
+            console.warn('[burnish] View content element not found for:', dataId);
+            return;
+        }
 
         let html;
-        if (viewType === 'cards') html = renderCardsView(data.parsed, data.sourceToolName);
+        if (viewType === 'cards') html = renderCardsView(data.parsed, data.sourceToolName, dataId);
         else if (viewType === 'json') html = renderJsonView(data.parsed);
         else html = renderTableView(data.parsed, data.label);
 
@@ -1012,7 +1039,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nodeEl?.dataset?.nodeId) branchFromNodeId = nodeEl.dataset.nodeId;
 
         const bareToolName = toolId.replace(/^mcp__\w+__/, '');
-        const isWrite = /^(create|update|delete|remove|push|write|edit|move|fork|merge|add|set|close|lock|assign)/i.test(bareToolName);
+        const isWrite = WRITE_TOOL_RE.test(bareToolName);
 
         if (isWrite) {
             const toolShortName = (toolId.split('__').pop() || toolId).replace(/_/g, ' ');
@@ -1070,6 +1097,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!session) return;
 
             const parentId = branchFromNodeId || session.activeNodeId || (session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null);
+            branchFromNodeId = null;
 
             const node = {
                 id: nodeId,
@@ -1133,7 +1161,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (hasRequiredUnfilled && schema) {
                     const formHtml = generateFallbackForm(parsed.toolName, schema);
-                    renderDeterministicNode(label, formHtml);
+                    if (formHtml) {
+                        renderDeterministicNode(label, formHtml);
+                    } else {
+                        executeToolDirect(parsed.toolName, parsed.args, label);
+                    }
                 } else {
                     executeToolDirect(parsed.toolName, parsed.args, label);
                 }
@@ -1165,483 +1197,12 @@ function renderMarkdown(text) {
     return div.innerHTML;
 }
 
-function escapeAttr(text) {
-    return text.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function getEmptyState() {
-    return `
-        <div class="burnish-empty-state">
-            <h2>Burnish</h2>
-            <p>Explore your data visually through connected services</p>
-            <div class="burnish-server-buttons" id="server-buttons">
-                <div class="burnish-suggestion-skeleton-pill"></div>
-                <div class="burnish-suggestion-skeleton-pill"></div>
-            </div>
-            <div class="burnish-tool-shortcuts" id="tool-shortcuts"></div>
-            <div class="burnish-starter-prompts" id="starter-prompts"></div>
-            <div class="burnish-empty-hint" id="empty-hint"></div>
-        </div>
-    `;
-}
-
-// ── Deterministic Rendering Helpers ──
-
-function generateToolListingHtml(serverName, tools) {
-    const groups = {};
-    for (const tool of tools) {
-        const verb = tool.name.split(/[_\-]/)[0] || 'other';
-        if (!groups[verb]) groups[verb] = [];
-        groups[verb].push(tool);
-    }
-
-    const statItems = Object.entries(groups).map(([verb, items]) => ({
-        label: verb.charAt(0).toUpperCase() + verb.slice(1),
-        value: String(items.length),
-        color: items.some(t => /^(create|update|delete|push|write|edit|move)/.test(t.name)) ? 'warning' : 'info',
-    }));
-    let html = `<burnish-stat-bar items='${escapeAttr(JSON.stringify(statItems))}'></burnish-stat-bar>`;
-
-    for (const [verb, items] of Object.entries(groups)) {
-        const label = verb.charAt(0).toUpperCase() + verb.slice(1) + ' Operations';
-        html += `<burnish-section label="${escapeAttr(label)}" count="${items.length}" status="info">`;
-        for (const tool of items) {
-            const toolIsWrite = /^(create|update|delete|push|write|edit|move|fork|merge|add|set|close|lock|assign)/.test(tool.name);
-            html += `<burnish-card title="${escapeAttr(tool.name)}" status="${toolIsWrite ? 'warning' : 'success'}" body="${escapeAttr(tool.description || '')}" item-id="${escapeAttr(tool.name)}"></burnish-card>`;
-        }
-        html += `</burnish-section>`;
-    }
-
-    return html;
-}
-
-function renderDeterministicToolListing(serverName, tools) {
-    const nodeId = generateId();
-    const session = getActiveSession();
-    if (!session) return;
-
-    const html = generateToolListingHtml(serverName, tools);
-
-    const parentId = session.activeNodeId || (session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null);
-    const node = {
-        id: nodeId,
-        prompt: serverName,
-        promptDisplay: serverName,
-        response: html,
-        type: 'components',
-        timestamp: Date.now(),
-        parentId,
-        children: [],
-        collapsed: false,
-        tags: tools.map(t => (t.name.split(/[_-]/)[0] || 'other')).filter((v, i, a) => a.indexOf(v) === i),
-        summary: `${serverName}: ${tools.length} tools`,
-    };
-
-    node._executionMode = 'deterministic';
-    node._toolCall = { toolName: '__listing__', args: { serverName }, label: serverName };
-
-    if (parentId) {
-        const parent = session.nodes.find(n => n.id === parentId);
-        if (parent) parent.children.push(nodeId);
-    }
-    session.nodes.push(node);
-    session.activeNodeId = nodeId;
-    session.updatedAt = Date.now();
-
-    if (!session.title || session.title === 'New session') {
-        session.title = `${serverName} tools`;
-    }
-
-    const emptyState = document.getElementById('main-content')?.querySelector('.burnish-empty-state');
-    if (emptyState) emptyState.remove();
-
-    renderMainContent();
-    updateBreadcrumb();
-    renderSessionList();
-    saveState();
-}
-
-function renderDeterministicNode(label, html) {
-    const nodeId = generateId();
-    const session = getActiveSession();
-    if (!session) return;
-
-    const parentId = branchFromNodeId || session.activeNodeId || (session.nodes.length > 0 ? session.nodes[session.nodes.length - 1].id : null);
-    const node = {
-        id: nodeId,
-        prompt: label,
-        promptDisplay: label,
-        response: html,
-        type: 'components',
-        timestamp: Date.now(),
-        parentId,
-        children: [],
-        collapsed: false,
-        tags: [],
-        summary: label,
-    };
-
-    node._executionMode = 'deterministic';
-
-    if (parentId) {
-        const parent = session.nodes.find(n => n.id === parentId);
-        if (parent) parent.children.push(nodeId);
-    }
-    session.nodes.push(node);
-    session.activeNodeId = nodeId;
-    session.updatedAt = Date.now();
-
-    if (!session.title || session.title === 'New session') {
-        session.title = label.substring(0, 60);
-    }
-
-    const container = document.getElementById('main-content');
-    const emptyState = container?.querySelector('.burnish-empty-state');
-    if (emptyState) emptyState.remove();
-
-    renderMainContent();
-    updateBreadcrumb();
-    renderSessionList();
-    saveState();
-    branchFromNodeId = null;
-    return node;
-}
-
-async function executeToolDirect(toolName, args, label) {
-    try {
-        const res = await fetch('/api/tools/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ toolName, args }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Execution failed');
-
-        const resultHtml = buildResultHtml(data.result, label, toolName);
-        const node = renderDeterministicNode(label, resultHtml);
-        if (node) {
-            node._executionMode = 'deterministic';
-            node._toolCall = { toolName, args: { ...args }, label };
-        }
-    } catch (err) {
-        renderDeterministicNode(label, `<burnish-card title="Error" status="error" body="${escapeAttr(err.message)}"></burnish-card>`);
-    }
-}
-
-function buildResultHtml(result, label, sourceToolName) {
-    try {
-        const parsed = JSON.parse(result);
-        return renderParsedResult(parsed, label, sourceToolName);
-    } catch {
-        return `<burnish-card title="${escapeAttr(label)}" status="success" body="${escapeAttr(result.substring(0, 1000))}"></burnish-card>`;
-    }
-}
-
-function generateContextualActions(resultData, sourceToolName) {
-    if (!sourceToolName) return [];
-    if (!cachedServers) {
-        try {
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', '/api/servers', false);
-            xhr.send();
-            if (xhr.status === 200) {
-                const data = JSON.parse(xhr.responseText);
-                cachedServers = data.servers;
-            }
-        } catch { /* ignore */ }
-    }
-    if (!cachedServers) return [];
-
-    const items = Array.isArray(resultData) ? resultData :
-        (resultData?.items || resultData?.results || resultData?.data || []);
-    if (items.length === 0 || typeof items[0] !== 'object') return [];
-
-    const firstItem = items[0];
-    const actions = [];
-
-    let serverName = sourceToolName.replace(/^mcp__/, '').split('__')[0];
-    let server = cachedServers?.find(s => s.name === serverName);
-    if (!server && cachedServers) {
-        const shortName = sourceToolName.replace(/^mcp__\w+__/, '');
-        for (const s of cachedServers) {
-            if (s.tools.some(t => t.name === shortName || t.name === sourceToolName)) {
-                server = s;
-                serverName = s.name;
-                break;
-            }
-        }
-    }
-    if (!server) return actions;
-
-    if (firstItem.full_name && firstItem.full_name.includes('/')) {
-        const [owner, repo] = firstItem.full_name.split('/');
-        for (const tool of server.tools) {
-            const props = tool.inputSchema?.properties || {};
-            if (props.owner && props.repo && !sourceToolName.includes(tool.name)) {
-                const toolId = tool.name;
-                const shortName = tool.name.replace(/_/g, ' ');
-                const isWrite = /^(create|update|delete|push|write|edit|move|fork|merge|add)/.test(tool.name);
-                actions.push({
-                    label: shortName,
-                    action: isWrite ? 'write' : 'read',
-                    prompt: JSON.stringify({ _directExec: true, toolName: toolId, args: { owner, repo } }),
-                    icon: isWrite ? 'edit' : 'search',
-                });
-            }
-        }
-    }
-
-    if (firstItem.path || firstItem.name) {
-        for (const tool of server.tools) {
-            const props = tool.inputSchema?.properties || {};
-            if (props.path && !sourceToolName.includes(tool.name) && /^(list|read|get|directory)/.test(tool.name)) {
-                actions.push({
-                    label: tool.name.replace(/_/g, ' '),
-                    action: 'read',
-                    prompt: JSON.stringify({ _directExec: true, toolName: tool.name, args: {} }),
-                    icon: 'list',
-                });
-            }
-        }
-    }
-
-    actions.sort((a, b) => {
-        if (a.action === 'read' && b.action !== 'read') return -1;
-        if (a.action !== 'read' && b.action === 'read') return 1;
-        return 0;
-    });
-    return actions.slice(0, 6);
-}
-
-function generateContextualActionsForItem(item) {
-    if (!cachedServers) {
-        try {
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', '/api/servers', false);
-            xhr.send();
-            if (xhr.status === 200) cachedServers = JSON.parse(xhr.responseText).servers;
-        } catch { /* ignore */ }
-    }
-    if (!cachedServers) return [];
-
-    const actions = [];
-
-    for (const server of cachedServers) {
-        for (const tool of server.tools) {
-            const props = tool.inputSchema?.properties || {};
-            const args = {};
-            let matchCount = 0;
-
-            if (props.owner && item.full_name && item.full_name.includes('/')) {
-                args.owner = item.full_name.split('/')[0];
-                matchCount++;
-            }
-            if (props.repo && item.full_name && item.full_name.includes('/')) {
-                args.repo = item.full_name.split('/')[1];
-                matchCount++;
-            }
-            if (props.path && item.path) {
-                args.path = item.path;
-                matchCount++;
-            }
-            if (props.issue_number && item.number) {
-                args.issue_number = item.number;
-                matchCount++;
-            }
-
-            if (matchCount >= 1) {
-                const isWrite = /^(create|update|delete|push|write|edit|move|fork|merge|add)/.test(tool.name);
-                actions.push({
-                    label: tool.name.replace(/_/g, ' '),
-                    action: isWrite ? 'write' : 'read',
-                    prompt: JSON.stringify({ _directExec: true, toolName: tool.name, args }),
-                    icon: isWrite ? 'edit' : 'search',
-                });
-            }
-        }
-    }
-
-    actions.sort((a, b) => (a.action === 'read' ? -1 : 1) - (b.action === 'read' ? -1 : 1));
-    return actions.slice(0, 6);
-}
-
-// ── View switching data store ──
-window._viewData = window._viewData || {};
-
-function renderViewSwitcher(dataId, activeView, count) {
-    return `<div class="burnish-view-switcher" data-view-id="${dataId}">
-        <button class="burnish-view-btn ${activeView === 'cards' ? 'active' : ''}" data-view="cards" data-target="${dataId}">Cards</button>
-        <button class="burnish-view-btn ${activeView === 'table' ? 'active' : ''}" data-view="table" data-target="${dataId}">Table</button>
-        <button class="burnish-view-btn ${activeView === 'json' ? 'active' : ''}" data-view="json" data-target="${dataId}">JSON</button>
-        <span class="burnish-view-count">${count} items</span>
-    </div>`;
-}
-
-function stripMarkdown(text) {
-    return text
-        .replace(/#{1,6}\s*/g, '')
-        .replace(/\*\*([^*]+)\*\*/g, '$1')
-        .replace(/\*([^*]+)\*/g, '$1')
-        .replace(/`{1,3}[^`]*`{1,3}/g, '')
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .replace(/\n{2,}/g, ' ')
-        .replace(/\n/g, ' ')
-        .trim();
-}
-
-function inferCardStatus(item, sourceToolName) {
-    // Infer from data state fields
-    if (item.state === 'closed' || item.state === 'merged') return 'success';
-    if (item.state === 'open') return 'info';
-    if (item.draft === true) return 'muted';
-    // Infer from source tool
-    if (sourceToolName) {
-        const base = sourceToolName.replace(/^mcp__\w+__/, '');
-        if (/^(create|update|delete|push|write|edit|move|fork|merge|add|set|close)/.test(base)) return 'warning';
-    }
-    return 'success';
-}
-
-function renderCardsView(items, sourceToolName) {
-    const viewId = 'cv-' + Date.now();
-    window._cardItems = window._cardItems || {};
-    window._cardItems[viewId] = items;
-
-    let html = '<div class="burnish-cards-grid">';
-    for (let i = 0; i < Math.min(items.length, 50); i++) {
-        const item = items[i];
-        const title = item.full_name || item.name || item.title || item.login || 'Item';
-        const rawBody = item.description || item.body || item.message || '';
-        const body = stripMarkdown(rawBody).substring(0, 150);
-        const status = inferCardStatus(item, sourceToolName);
-        const meta = Object.entries(item)
-            .filter(([k, v]) => typeof v !== 'object' && v != null
-                && !['description','body','message','name','full_name','title','login'].includes(k)
-                && !/_url$|^url$|node_id|_id$|avatar|gravatar/.test(k)
-                && !(typeof v === 'string' && v.startsWith('http'))
-                && String(v).length < 80)
-            .slice(0, 4)
-            .map(([k, v]) => ({ label: k.replace(/_/g, ' '), value: String(v) }));
-        html += `<burnish-card title="${escapeAttr(title)}" status="${status}"
-            body="${escapeAttr(body)}"
-            meta='${escapeAttr(JSON.stringify(meta))}'
-            item-id="${escapeAttr(viewId + ':' + i)}"></burnish-card>`;
-    }
-    html += '</div>';
-    return html;
-}
-
-function renderTableView(items, label) {
-    const allKeys = Object.keys(items[0]);
-
-    // Priority columns — show these first if they exist
-    const priority = ['title','name','full_name','number','state','status',
-        'login','description','language','created_at','updated_at',
-        'stargazers_count','path','size','type','message','body'];
-
-    // Exclude URL/API fields and internal IDs
-    const excludePattern = /_url$|_id$|node_id|gravatar|avatar|_at$/i;
-    const isUrl = (v) => typeof v === 'string' && (v.startsWith('http') || v.startsWith('git://'));
-
-    const priorityCols = priority.filter(k => allKeys.includes(k));
-    const otherCols = allKeys.filter(k => {
-        if (priorityCols.includes(k)) return false;
-        if (excludePattern.test(k)) return false;
-        const sample = items[0][k];
-        if (typeof sample === 'object' && sample !== null) return false;
-        if (isUrl(sample)) return false;
-        return true;
-    });
-
-    const selectedKeys = [...priorityCols, ...otherCols].slice(0, 10);
-    const cols = selectedKeys.map(k => ({ key: k, label: k.replace(/_/g, ' ') }));
-
-    const rows = items.slice(0, 50).map(item => {
-        const row = {};
-        for (const col of cols) {
-            let val = item[col.key];
-            if (val == null) { row[col.key] = ''; continue; }
-            if (typeof val === 'object') {
-                val = val.login || val.name || val.label || val.title || '';
-            }
-            val = String(val);
-            if (val.length > 80) val = val.substring(0, 77) + '...';
-            row[col.key] = val;
-        }
-        return row;
-    });
-    return `<burnish-table title="${escapeAttr(label)}" columns='${escapeAttr(JSON.stringify(cols))}' rows='${escapeAttr(JSON.stringify(rows))}'></burnish-table>`;
-}
-
-function renderJsonView(items) {
-    return `<pre class="burnish-json-view">${escapeHtml(JSON.stringify(items, null, 2).substring(0, 50000))}</pre>`;
-}
-
-function renderParsedResult(parsed, label, sourceToolName) {
-    if (Array.isArray(parsed)) {
-        if (parsed.length === 0) {
-            return `<burnish-card title="${escapeAttr(label)}" status="muted" body="No results"></burnish-card>`;
-        }
-        if (typeof parsed[0] === 'object') {
-            // Store data for view switching
-            const dataId = 'vd-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
-            window._viewData[dataId] = { parsed, label, sourceToolName };
-
-            // Default: cards view (always visible, drillable)
-            const defaultView = 'cards';
-            let html = `<burnish-stat-bar items='${escapeAttr(JSON.stringify([{label:"Results",value:String(parsed.length),color:"info"}]))}'></burnish-stat-bar>`;
-            html += renderViewSwitcher(dataId, defaultView, parsed.length);
-            html += `<div class="burnish-view-content" data-view-id="${dataId}">`;
-            html += renderCardsView(parsed, sourceToolName);
-            html += '</div>';
-
-            const actions = generateContextualActions(parsed, sourceToolName);
-            if (actions.length > 0) {
-                html += `<burnish-actions actions='${escapeAttr(JSON.stringify(actions))}'></burnish-actions>`;
-            }
-            return html;
-        }
-        return parsed.slice(0, 20).map(item =>
-            `<burnish-card title="${escapeAttr(String(item))}" status="info"></burnish-card>`
-        ).join('');
-    }
-
-    if (typeof parsed === 'object' && parsed !== null) {
-        const arrayKeys = ['items','results','data','entries','records','rows','nodes',
-            'repositories','issues','files','commits','pull_requests','comments'];
-        const nestedKey = arrayKeys.find(k => Array.isArray(parsed[k]) && parsed[k].length > 0);
-
-        if (nestedKey && typeof parsed[nestedKey][0] === 'object') {
-            const scalarFields = Object.entries(parsed)
-                .filter(([k, v]) => k !== nestedKey && typeof v !== 'object' && typeof v !== 'boolean')
-                .slice(0, 5);
-            let html = '';
-            if (scalarFields.length > 0) {
-                const statItems = scalarFields.map(([k, v]) => ({
-                    label: k.replace(/_/g, ' '), value: String(v), color: 'info'
-                }));
-                html += `<burnish-stat-bar items='${escapeAttr(JSON.stringify(statItems))}'></burnish-stat-bar>`;
-            }
-            html += renderParsedResult(parsed[nestedKey], nestedKey, sourceToolName);
-            return html;
-        }
-
-        const meta = Object.entries(parsed)
-            .filter(([, v]) => typeof v !== 'object' || v === null)
-            .slice(0, 10)
-            .map(([k, v]) => ({ label: k.replace(/_/g, ' '), value: String(v ?? '') }));
-        return `<burnish-card title="${escapeAttr(label)}" status="success" meta='${escapeAttr(JSON.stringify(meta))}'></burnish-card>`;
-    }
-
-    return `<burnish-card title="${escapeAttr(label)}" status="success" body="${escapeAttr(String(parsed))}"></burnish-card>`;
-}
-
 async function loadDynamicSuggestions(container) {
     try {
         const res = await fetch('/api/servers');
         const { servers } = await res.json();
 
-        cachedServers = servers;
+        setCachedServers(servers);
 
         for (const s of servers) {
             for (const tool of s.tools) {
@@ -1683,26 +1244,15 @@ async function loadDynamicSuggestions(container) {
                     ? firstSentence.substring(0, 40) + (firstSentence.length > 40 ? '...' : '')
                     : tool.name.replace(/_/g, ' ');
 
-                // Determine if tool has required params
                 const schema = tool.inputSchema;
                 const hasRequired = schema?.required?.length > 0;
                 const hasParams = schema?.properties && Object.keys(schema.properties).length > 0;
 
-                if (hasRequired || hasParams) {
-                    // Show form for tools with parameters
-                    shortcuts.push({
-                        label,
-                        tool: tool.name,
-                        args: {},
-                    });
-                } else {
-                    // Execute directly for parameterless tools
-                    shortcuts.push({
-                        label,
-                        tool: tool.name,
-                        args: {},
-                    });
-                }
+                shortcuts.push({
+                    label,
+                    tool: tool.name,
+                    args: {},
+                });
                 countForServer++;
             }
         }

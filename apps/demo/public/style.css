@@ -957,3 +957,105 @@ body {
     .burnish-tool-shortcuts { flex-direction: column; align-items: center; }
     .burnish-starter-prompts { flex-direction: column; align-items: center; }
 }
+
+/* Loading spinner for tool execution */
+.burnish-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    color: var(--burnish-text-muted, #9ca3af);
+    font-size: 14px;
+}
+.burnish-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--burnish-border, #e5e7eb);
+    border-top-color: var(--burnish-accent, #4f6df5);
+    border-radius: 50%;
+    animation: burnish-spin 0.6s linear infinite;
+}
+@keyframes burnish-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Truncation notice */
+.burnish-truncation-notice {
+    padding: 8px 12px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--burnish-text-muted, #9ca3af);
+    text-align: center;
+    border-top: 1px solid var(--burnish-border, #e5e7eb);
+}
+
+/* ── Mode Toggle ── */
+.burnish-mode-toggle {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--burnish-surface-alt, #f3f4f6);
+    border-radius: 6px;
+}
+.burnish-mode-btn {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--burnish-text-secondary, #6b7280);
+    transition: all 0.15s ease;
+}
+.burnish-mode-btn.active {
+    background: white;
+    color: var(--burnish-text, #111827);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* ── AI Insight Slot ── */
+.burnish-ai-insight {
+    display: none;
+    min-height: 48px;
+    margin-top: 12px;
+    padding: 12px;
+    border-left: 3px solid var(--burnish-accent, #4f6df5);
+    background: var(--burnish-surface-alt, #f8f9fa);
+    border-radius: 0 4px 4px 0;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.burnish-ai-insight.loaded { opacity: 1; }
+.burnish-insight-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--burnish-text-muted, #9ca3af);
+    font-size: 13px;
+    font-style: italic;
+}
+
+/* ── Copilot Prompt Bar ── */
+#copilot-prompt-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 16px;
+    background: var(--burnish-surface, #fff);
+    border-top: 1px solid var(--burnish-border, #e5e7eb);
+    display: none;
+    z-index: 100;
+}
+#copilot-prompt-bar input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--burnish-border, #e5e7eb);
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+}
+#copilot-prompt-bar input:focus {
+    border-color: var(--burnish-accent, #4f6df5);
+    box-shadow: 0 0 0 2px rgba(79, 109, 245, 0.1);
+}

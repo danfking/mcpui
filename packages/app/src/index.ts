@@ -32,3 +32,5 @@ export {
     generateSummary,
     formatTimeAgo,
 } from './summary.js';
+
+export { StreamOrchestrator } from './stream-orchestrator.js';

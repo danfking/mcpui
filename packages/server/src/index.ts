@@ -1,5 +1,6 @@
 // @burnish/server — MCP orchestration and session management
 
+// ConversationStore is used by LlmOrchestrator in Copilot mode
 export {
     ConversationStore,
     type Message,
@@ -21,3 +22,15 @@ export {
     guardToolExecution,
     type GuardResult,
 } from './guards.js';
+
+export {
+    LlmOrchestrator,
+    ALLOWED_MODELS,
+    type StreamChunk,
+    type WorkflowStep,
+} from './llm.js';
+
+export {
+    buildSystemPrompt,
+    buildNoToolsPrompt,
+} from './prompt-template.js';

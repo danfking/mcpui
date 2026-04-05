@@ -5,6 +5,9 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm -r build && pnpm --filter demo dev",
+    "dev:nomodel": "pnpm -r build && pnpm --filter demo dev:nomodel",
+    "test": "npx playwright test",
+    "test:ci": "npx playwright test --project=chromium",
     "clean": "pnpm -r clean",
     "prepare": "git config core.hooksPath .githooks"
   },

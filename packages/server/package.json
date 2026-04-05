@@ -19,7 +19,9 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1"
+    "@anthropic-ai/sdk": "^0.82.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "openai": "^6.33.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

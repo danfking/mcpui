@@ -13,3 +13,11 @@ export {
     type ComponentSuggestion,
     type MapperOptions,
 } from './component-mapper.js';
+
+export {
+    findStreamElements,
+    appendStreamElement,
+    containsTags,
+    extractHtmlContent,
+    type StreamElement,
+} from './stream-parser.js';

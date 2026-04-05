@@ -212,9 +212,14 @@ export class BurnishCard extends LitElement {
             .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
             .replace(/\*([^*]+)\*/g, '<em>$1</em>')
             .replace(/`([^`]+)`/g, '<code>$1</code>')
-            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_: string, text: string, url: string) => {
+                if (/^https?:\/\//i.test(url)) {
+                    return `<a href="${url}" target="_blank" rel="noopener">${text}</a>`;
+                }
+                return text;
+            })
             .replace(/^- (.+)$/gm, '<li>$1</li>')
-            .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+            .replace(/((?:<li>.*?<\/li>\s*)+)/gs, '<ul>$1</ul>')
             .replace(/\n{2,}/g, '</p><p>')
             .replace(/\n/g, '<br>')
             .replace(/^/, '<p>').replace(/$/, '</p>')

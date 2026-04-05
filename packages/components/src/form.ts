@@ -213,6 +213,12 @@ export class BurnishForm extends LitElement {
         this._lookupLoading = false;
     }
 
+    private _handleKeydown(e: KeyboardEvent) {
+        if (e.key === 'Enter' && (e.target as HTMLElement)?.tagName !== 'TEXTAREA') {
+            this._handleSubmit(e);
+        }
+    }
+
     private _handleSubmit(e: Event) {
         e.preventDefault();
         const fields = this._getFields();
@@ -321,7 +327,7 @@ export class BurnishForm extends LitElement {
                     </svg>
                     ${this.title || 'Form'}
                 </div>
-                <div class="form-body" @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' && (e.target as HTMLElement)?.tagName !== 'TEXTAREA') this._handleSubmit(e); }}>
+                <div class="form-body" @keydown=${this._handleKeydown}>
                     ${fields.map(f => html`
                         <div class="form-field">
                             <label class="form-label">
