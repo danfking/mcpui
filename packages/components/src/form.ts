@@ -63,7 +63,7 @@ export class BurnishForm extends LitElement {
         }
         .form-input:focus, .form-textarea:focus, .form-select:focus {
             outline: none; border-color: var(--burnish-accent, #8B3A3A);
-            box-shadow: 0 0 0 3px rgba(79, 109, 245, 0.1);
+            box-shadow: 0 0 0 3px rgba(139, 58, 58, 0.1);
         }
         .form-textarea { min-height: 80px; resize: vertical; }
 
@@ -94,7 +94,7 @@ export class BurnishForm extends LitElement {
             border-bottom: 1px solid var(--burnish-border-light, #F0EAEA);
             transition: background 0.1s ease;
         }
-        .form-lookup-item:hover { background: rgba(79, 109, 245, 0.06); }
+        .form-lookup-item:hover { background: rgba(139, 58, 58, 0.06); }
         .form-lookup-item:last-child { border-bottom: none; }
         .form-lookup-item-value { font-weight: 500; color: var(--burnish-text, #2D1F1F); }
         .form-lookup-item-label { font-size: 11px; color: var(--burnish-text-muted, #9C8F8F); margin-left: 6px; }

@@ -125,7 +125,7 @@ body {
     text-overflow: ellipsis;
 }
 .burnish-session-match mark {
-    background: rgba(79, 109, 245, 0.15);
+    background: rgba(139, 58, 58, 0.15);
     color: var(--burnish-accent, #8B3A3A);
     border-radius: 2px;
     padding: 0 1px;
@@ -185,6 +185,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: var(--burnish-space-lg, 16px);
+    overflow-x: hidden; /* fallback for Safari <16 */
     overflow-x: clip;
 }
 
@@ -310,7 +311,7 @@ body {
 .burnish-suggestion:hover {
     border-color: var(--burnish-accent, #8B3A3A);
     color: var(--burnish-accent);
-    background: rgba(79, 109, 245, 0.04);
+    background: rgba(139, 58, 58, 0.04);
 }
 
 /* ── Empty State Hint ── */
@@ -757,7 +758,7 @@ body {
 }
 /* Flash animation for scroll-to */
 @keyframes node-highlight {
-    0% { box-shadow: 0 0 0 3px rgba(79, 109, 245, 0.4); }
+    0% { box-shadow: 0 0 0 3px rgba(139, 58, 58, 0.4); }
     100% { box-shadow: 0 0 0 3px transparent; }
 }
 .burnish-node-highlight {
@@ -787,7 +788,7 @@ body {
     gap: var(--burnish-space-md, 12px);
 }
 .burnish-json-view {
-    background: var(--burnish-surface-alt, #f8f9fa); padding: 16px; border-radius: 4px;
+    background: var(--burnish-surface-alt, #F8F5F5); padding: 16px; border-radius: 4px;
     font-size: 11px; font-family: var(--burnish-font-mono, 'SF Mono', monospace);
     overflow: auto; max-height: 500px; white-space: pre-wrap; word-break: break-all;
     border: 1px solid var(--burnish-border-light, #F0EAEA);
@@ -1020,7 +1021,7 @@ body {
     margin-top: 12px;
     padding: 12px;
     border-left: 3px solid var(--burnish-accent, #8B3A3A);
-    background: var(--burnish-surface-alt, #f8f9fa);
+    background: var(--burnish-surface-alt, #F8F5F5);
     border-radius: 0 4px 4px 0;
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -1057,7 +1058,7 @@ body {
 }
 #copilot-prompt-bar input:focus {
     border-color: var(--burnish-accent, #8B3A3A);
-    box-shadow: 0 0 0 2px rgba(79, 109, 245, 0.1);
+    box-shadow: 0 0 0 2px rgba(139, 58, 58, 0.1);
 }
 
 /* ── Execution Timing Badge ── */

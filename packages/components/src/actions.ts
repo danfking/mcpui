@@ -41,7 +41,7 @@ export class BurnishActions extends LitElement {
         .action-btn:hover {
             border-color: var(--burnish-accent, #8B3A3A);
             color: var(--burnish-accent, #8B3A3A);
-            background: rgba(79, 109, 245, 0.04);
+            background: rgba(139, 58, 58, 0.04);
         }
         .action-icon {
             font-size: 14px;

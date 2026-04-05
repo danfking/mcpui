@@ -95,6 +95,11 @@
         --burnish-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
         --burnish-muted: #7A6B6B;
         --burnish-border-muted: #3D3232;
+        --burnish-border-success: #1a3a24;
+        --burnish-border-warning: #3a3418;
+        --burnish-border-error: #3a1a1a;
+        --burnish-error-bg: #3a1a1a;
+        --burnish-success-bg: #1a3a24;
     }
 }
 
@@ -118,4 +123,9 @@
     --burnish-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
     --burnish-muted: #7A6B6B;
     --burnish-border-muted: #3D3232;
+    --burnish-border-success: #1a3a24;
+    --burnish-border-warning: #3a3418;
+    --burnish-border-error: #3a1a1a;
+    --burnish-error-bg: #3a1a1a;
+    --burnish-success-bg: #1a3a24;
 }

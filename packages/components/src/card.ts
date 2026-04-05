@@ -126,7 +126,7 @@ export class BurnishCard extends LitElement {
             opacity: 0.6; transition: opacity var(--burnish-transition-fast);
             cursor: pointer;
         }
-        .card-action:hover { background: rgba(59, 130, 246, 0.04); }
+        .card-action:hover { background: rgba(139, 58, 58, 0.04); }
         .card:hover .card-action { opacity: 1; }
         .card-link {
             color: var(--burnish-link, #7C3030);
@@ -146,7 +146,7 @@ export class BurnishCard extends LitElement {
             cursor: pointer; transition: all 0.15s ease;
         }
         .link-btn:hover {
-            background: rgba(59, 130, 246, 0.06);
+            background: rgba(139, 58, 58, 0.06);
             border-color: var(--burnish-link, #7C3030);
         }
         .link-icon { font-size: 10px; }

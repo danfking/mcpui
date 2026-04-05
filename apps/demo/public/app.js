@@ -865,7 +865,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const copyBtn = e.target.closest('.burnish-copy-btn');
         if (!copyBtn) return;
 
-        const wrapper = copyBtn.closest('.burnish-json-wrapper');
+        const wrapper = copyBtn.closest('.burnish-json-wrapper') || copyBtn.closest('.burnish-tool-call-content');
         const pre = wrapper?.querySelector('pre');
         if (pre) {
             await navigator.clipboard.writeText(pre.textContent);
