@@ -50,6 +50,17 @@ export function generateToolListingHtml(serverName, tools) {
     });
     let html = `<burnish-stat-bar items='${escapeAttr(JSON.stringify(statItems))}'></burnish-stat-bar>`;
 
+    const riskCounts = { low: 0, medium: 0, high: 0 };
+    for (const tool of tools) {
+        riskCounts[assessToolRisk(tool).level]++;
+    }
+    const riskItems = [
+        { label: 'Low Risk', value: String(riskCounts.low), color: 'success' },
+        { label: 'Medium Risk', value: String(riskCounts.medium), color: 'warning' },
+        { label: 'High Risk', value: String(riskCounts.high), color: 'error' },
+    ].filter(i => Number(i.value) > 0);
+    html += `<burnish-stat-bar items='${escapeAttr(JSON.stringify(riskItems))}'></burnish-stat-bar>`;
+
     html += `<div class="burnish-tool-filter-container">
     <input type="text" class="burnish-tool-filter" placeholder="Filter tools..." autocomplete="off">
 </div>`;
