@@ -42,10 +42,11 @@ test('session with prompt steps persists after refresh', async ({ page }) => {
 
     // Get session info
     const sessionId = await page.locator('.burnish-session-item').first().getAttribute('data-session-id');
-    const sessionTitle = await page.locator('.burnish-session-item .burnish-session-title').first().textContent();
 
-    // Wait for saveState to flush
-    await page.waitForTimeout(2000);
+    // Wait for async title update (LLM-generated title) and saveState to flush
+    await page.waitForTimeout(3000);
+
+    const sessionTitle = await page.locator('.burnish-session-item .burnish-session-title').first().textContent();
 
     // Verify nodes are in IndexedDB (burnish-nodes database)
     const nodeKeys = await page.evaluate(async () => {

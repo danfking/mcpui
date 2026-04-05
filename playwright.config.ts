@@ -6,6 +6,13 @@ export default defineConfig({
     use: {
         baseURL: 'http://localhost:3000',
     },
-    // Don't auto-start — expect server already running
-    webServer: undefined,
+    webServer: process.env.CI ? {
+        command: 'pnpm --filter demo dev',
+        url: 'http://localhost:3000',
+        reuseExistingServer: false,
+        timeout: 30_000,
+        env: {
+            LLM_BACKEND: 'none',
+        },
+    } : undefined,
 });
