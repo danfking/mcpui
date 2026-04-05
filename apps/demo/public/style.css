@@ -161,7 +161,7 @@ body {
     padding-right: 20px;
 }
 .burnish-session-meta {
-    font-size: 11px; color: var(--burnish-text-muted); margin-top: 2px;
+    font-size: 11px; color: var(--burnish-text-secondary); margin-top: 2px;
 }
 .burnish-session-delete {
     position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
@@ -185,7 +185,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: var(--burnish-space-lg, 16px);
-    overflow-x: auto;
+    overflow-x: clip;
 }
 
 /* ── Inline Prompt Bubble ── */
@@ -609,7 +609,7 @@ body {
 .burnish-tree {
     display: flex;
     flex-direction: column;
-    min-width: min-content;
+    min-width: 0;
 }
 .burnish-tree-connector {
     width: 1px;
@@ -1142,7 +1142,7 @@ body {
     top: 0;
     z-index: 10;
     padding: 8px 0 12px;
-    background: var(--burnish-surface, #fff);
+    background: inherit;
 }
 .burnish-tool-filter {
     width: 100%;
@@ -1151,9 +1151,12 @@ body {
     border-radius: 8px;
     font-size: var(--burnish-font-size-base, 14px);
     color: var(--burnish-text, #2D1F1F);
-    background: var(--burnish-surface, #fff) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239C8F8F' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") 12px center no-repeat;
+    background-color: var(--burnish-surface-alt, #F8F5F5);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239C8F8F' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+    background-position: 12px center;
+    background-repeat: no-repeat;
     outline: none;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 .burnish-tool-filter:focus {
     border-color: var(--burnish-accent, #8B3A3A);
@@ -1229,7 +1232,7 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--burnish-error, #ef4444);
-    background: var(--burnish-error-bg, #fee2e2);
+    background: var(--burnish-border-error, #fee2e2);
     border-radius: 3px;
 }
 .burnish-schema-optional {

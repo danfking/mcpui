@@ -31,15 +31,17 @@ export class BurnishCard extends LitElement {
             -webkit-line-clamp: unset;
         }
         .expand-btn {
-            background: var(--burnish-surface-alt, #F0EAEA);
-            border: 1px solid var(--burnish-border, #E5DDDD);
+            background: none;
+            border: none;
             cursor: pointer;
-            padding: 3px 8px; color: var(--burnish-text-secondary, #6B5A5A);
-            display: flex; align-items: center; flex-shrink: 0;
-            border-radius: 4px; transition: all 0.15s ease;
-            font-size: 11px; font-weight: 500;
+            padding: 2px;
+            color: var(--burnish-text-muted, #9C8F8F);
+            display: none; align-items: center; flex-shrink: 0;
+            border-radius: 3px; transition: all 0.15s ease;
+            font-size: 10px; line-height: 1;
         }
-        .expand-btn:hover { color: var(--burnish-accent, #8B3A3A); border-color: var(--burnish-accent, #8B3A3A); background: rgba(139,58,58,0.06); }
+        .card:hover .expand-btn { display: flex; }
+        .expand-btn:hover { color: var(--burnish-accent, #8B3A3A); }
         .card {
             background: var(--burnish-surface, #fff);
             border-radius: var(--burnish-radius-md, 4px);
@@ -76,7 +78,7 @@ export class BurnishCard extends LitElement {
             font-size: var(--burnish-font-size-xs, 11px); font-weight: 600;
             text-transform: uppercase; letter-spacing: 0.5px;
             padding: 2px var(--burnish-space-sm, 8px); border-radius: 10px;
-            flex-shrink: 0;
+            flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .card-badge[data-status="success"], .card-badge[data-status="healthy"] {
             color: var(--burnish-success); background: var(--burnish-border-success);
@@ -266,8 +268,8 @@ export class BurnishCard extends LitElement {
                 <div class="card-header">
                     <span class="card-title">${this.title}</span>
                     <span class="card-badge" data-status="${statusColor}">${badgeText}</span>
-                    <button class="expand-btn" @click=${this._toggleExpand}>
-                        ${this._expanded ? '↙ Collapse' : '↗ Expand'}
+                    <button class="expand-btn" @click=${this._toggleExpand} title="${this._expanded ? 'Collapse' : 'Expand'}">
+                        ${this._expanded ? '↙' : '↗'}
                     </button>
                 </div>
                 ${this.body ? html`<div class="card-body">${unsafeHTML(this._renderMarkdown(this.body))}</div>` : ''}
