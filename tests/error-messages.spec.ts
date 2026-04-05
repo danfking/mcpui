@@ -4,10 +4,17 @@ test.describe('Error message handling', () => {
     test('tool execution error shows descriptive message', async ({ page }) => {
         await page.goto('/');
 
-        // Call /api/tools/execute with a filesystem tool and a nonexistent path
+        // Discover a real tool name from the server so we don't hardcode prefixes
+        const serversResp = await page.request.get('/api/servers');
+        const servers = await serversResp.json();
+        const firstServer = servers[0];
+        const readTool = firstServer.tools.find((t: any) => /read.file/i.test(t.name)) || firstServer.tools[0];
+        const toolName = readTool.name;
+
+        // Call /api/tools/execute with a nonexistent path to trigger an error
         const response = await page.request.post('/api/tools/execute', {
             data: {
-                toolName: 'mcp__filesystem__read_file',
+                toolName,
                 args: { path: '/nonexistent/path/that/does/not/exist/at/all' }
             }
         });
@@ -23,7 +30,7 @@ test.describe('Error message handling', () => {
     test('/api/tools/execute rejects array args with 400', async ({ page }) => {
         await page.goto('/');
         const response = await page.request.post('/api/tools/execute', {
-            data: { toolName: 'mcp__filesystem__read_file', args: ['invalid'] }
+            data: { toolName: 'read_file', args: ['invalid'] }
         });
         expect(response.status()).toBe(400);
     });
@@ -33,7 +40,7 @@ test.describe('Error message handling', () => {
         const args: Record<string, string> = {};
         for (let i = 0; i < 1000; i++) args['k' + i] = 'x'.repeat(100);
         const response = await page.request.post('/api/tools/execute', {
-            data: { toolName: 'mcp__filesystem__read_file', args }
+            data: { toolName: 'read_file', args }
         });
         expect(response.status()).toBe(413);
     });
