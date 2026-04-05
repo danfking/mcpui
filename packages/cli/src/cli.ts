@@ -10,8 +10,14 @@
  *   burnish export -- npx @modelcontextprotocol/server-github
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { startServer } from './server.js';
 import { exportSchema } from './export.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PKG_VERSION = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8')).version;
 
 export interface CliOptions {
     command: 'serve' | 'export';
@@ -59,7 +65,12 @@ function parseArgs(argv: string[]): CliOptions {
         }
 
         if (arg === '--port' && args[i + 1]) {
-            opts.port = parseInt(args[i + 1], 10);
+            const parsed = parseInt(args[i + 1], 10);
+            if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
+                console.error(`Invalid port: ${args[i + 1]}`);
+                process.exit(1);
+            }
+            opts.port = parsed;
             i += 2;
             continue;
         }
@@ -76,7 +87,7 @@ function parseArgs(argv: string[]): CliOptions {
         }
 
         if (arg === '-v' || arg === '--version') {
-            console.log('burnish 0.1.0');
+            console.log(`burnish ${PKG_VERSION}`);
             process.exit(0);
         }
 

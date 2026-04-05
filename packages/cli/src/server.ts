@@ -11,7 +11,7 @@ import { readFile } from 'node:fs/promises';
 import open from 'open';
 
 import { McpHub, isWriteTool } from '@burnish/server';
-import { buildConfigFile } from './config.js';
+import { buildConfigFile, cleanupTempConfig } from './config.js';
 import type { CliOptions } from './cli.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -199,6 +199,7 @@ export async function startServer(opts: CliOptions): Promise<void> {
     const shutdown = async () => {
         console.log('\n[burnish] Shutting down...');
         await mcpHub.shutdown();
+        await cleanupTempConfig();
         process.exit(0);
     };
 

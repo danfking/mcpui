@@ -3,11 +3,21 @@
  * McpHub.initialize() requires a file path, so we materialize the config.
  */
 
-import { writeFile, mkdtemp } from 'node:fs/promises';
+import { writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { McpServersConfig } from '@burnish/server';
 import type { CliOptions } from './cli.js';
+
+let _tmpDir: string | null = null;
+
+/** Remove the temp config directory if one was created. */
+export async function cleanupTempConfig(): Promise<void> {
+    if (_tmpDir) {
+        await rm(_tmpDir, { recursive: true, force: true }).catch(() => {});
+        _tmpDir = null;
+    }
+}
 
 export async function buildConfigFile(opts: CliOptions): Promise<string> {
     if (opts.configPath) {
@@ -44,8 +54,8 @@ export async function buildConfigFile(opts: CliOptions): Promise<string> {
         throw new Error('No server configuration provided');
     }
 
-    const tmpDir = await mkdtemp(resolve(tmpdir(), 'burnish-cli-'));
-    const configPath = resolve(tmpDir, 'mcp-servers.json');
+    _tmpDir = await mkdtemp(resolve(tmpdir(), 'burnish-cli-'));
+    const configPath = resolve(_tmpDir, 'mcp-servers.json');
     await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
     return configPath;
 }

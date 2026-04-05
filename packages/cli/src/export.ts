@@ -3,8 +3,10 @@
  */
 
 import { McpHub } from '@burnish/server';
-import { buildConfigFile } from './config.js';
+import { buildConfigFile, cleanupTempConfig } from './config.js';
 import type { CliOptions } from './cli.js';
+
+const CONNECT_TIMEOUT_MS = 30_000;
 
 export async function exportSchema(opts: CliOptions): Promise<void> {
     const configPath = await buildConfigFile(opts);
@@ -14,9 +16,15 @@ export async function exportSchema(opts: CliOptions): Promise<void> {
     console.error('[burnish] Connecting to MCP server...');
 
     try {
-        await mcpHub.initialize(configPath);
+        await Promise.race([
+            mcpHub.initialize(configPath),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Connection timed out after 30s')), CONNECT_TIMEOUT_MS),
+            ),
+        ]);
     } catch (err) {
         console.error('[burnish] Failed to connect:', err instanceof Error ? err.message : err);
+        await cleanupTempConfig();
         process.exit(1);
     }
 
@@ -43,4 +51,5 @@ export async function exportSchema(opts: CliOptions): Promise<void> {
     console.log(JSON.stringify(schema, null, 2));
 
     await mcpHub.shutdown();
+    await cleanupTempConfig();
 }
