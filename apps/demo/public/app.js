@@ -31,6 +31,7 @@ import { PURIFY_CONFIG, WRITE_TOOL_RE, escapeHtml, escapeAttr } from './shared.j
 import {
     renderCardsView, renderTableView, renderJsonView,
     renderViewSwitcher, renderParsedResult, buildResultHtml,
+    renderSchemaTree,
 } from './view-renderers.js';
 
 // ── Contextual actions ──
@@ -48,6 +49,16 @@ import {
 
 // ── Copilot UI ──
 import { detectMode, getCurrentMode, renderModeToggle, createInsightSlot, streamInsight } from './copilot-ui.js';
+
+// ── Theme toggle ──
+document.getElementById('theme-toggle')?.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const isDark = current === 'dark' ||
+        (!current && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const newTheme = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('burnish:theme', newTheme);
+});
 
 // ── Persistence ──
 const persistence = new SessionStore();
@@ -970,7 +981,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (hasAnyParams) {
                 const formHtml = generateFallbackForm(itemId, schema);
                 if (formHtml) {
-                    renderDeterministicNode(title, formHtml);
+                    const schemaHtml = renderSchemaTree(schema, itemId);
+                    renderDeterministicNode(title, schemaHtml + formHtml);
                     return;
                 }
             } else {
@@ -1210,7 +1222,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (hasRequiredUnfilled && schema) {
                     const formHtml = generateFallbackForm(parsed.toolName, schema);
                     if (formHtml) {
-                        renderDeterministicNode(label, formHtml);
+                        const schemaHtml = renderSchemaTree(schema, parsed.toolName);
+                        renderDeterministicNode(label, schemaHtml + formHtml);
                     } else {
                         executeToolDirect(parsed.toolName, parsed.args, label);
                     }

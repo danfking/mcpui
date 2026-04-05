@@ -71,3 +71,49 @@
     /* ── Layout ── */
     --burnish-chart-height: 300px;
 }
+
+/* Dark mode: respect system preference, allow explicit override */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --burnish-primary: #1A1212;
+        --burnish-surface: #1F1A1A;
+        --burnish-surface-alt: #2A2222;
+        --burnish-surface-hover: #332929;
+        --burnish-accent: #C45B5B;
+        --burnish-accent-hover: #D47070;
+        --burnish-accent-light: #3D2828;
+        --burnish-accent-bright: #E08080;
+        --burnish-link: #D47070;
+        --burnish-text: #E8E2E2;
+        --burnish-text-secondary: #A89999;
+        --burnish-text-muted: #7A6B6B;
+        --burnish-border: #3D3232;
+        --burnish-border-light: #332929;
+        --burnish-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+        --burnish-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+        --burnish-muted: #7A6B6B;
+        --burnish-border-muted: #3D3232;
+    }
+}
+
+/* Explicit dark mode override */
+[data-theme="dark"] {
+    --burnish-primary: #1A1212;
+    --burnish-surface: #1F1A1A;
+    --burnish-surface-alt: #2A2222;
+    --burnish-surface-hover: #332929;
+    --burnish-accent: #C45B5B;
+    --burnish-accent-hover: #D47070;
+    --burnish-accent-light: #3D2828;
+    --burnish-accent-bright: #E08080;
+    --burnish-link: #D47070;
+    --burnish-text: #E8E2E2;
+    --burnish-text-secondary: #A89999;
+    --burnish-text-muted: #7A6B6B;
+    --burnish-border: #3D3232;
+    --burnish-border-light: #332929;
+    --burnish-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --burnish-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+    --burnish-muted: #7A6B6B;
+    --burnish-border-muted: #3D3232;
+}

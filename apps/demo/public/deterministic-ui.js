@@ -177,6 +177,20 @@ export async function executeToolDirect(toolName, args, label) {
             node._toolCall = { toolName: toolName, args: Object.assign({}, args), label: label };
             node.response = resultHtml;
         }
+        // Generate tool call command
+        const toolCallJson = JSON.stringify({ name: toolName, arguments: args }, null, 2);
+        const toolCallHtml = `
+            <details class="burnish-tool-call">
+                <summary>Tool Call</summary>
+                <div class="burnish-tool-call-content">
+                    <button class="burnish-copy-btn" title="Copy tool call">Copy</button>
+                    <pre class="burnish-json-view">${escapeHtml(toolCallJson)}</pre>
+                </div>
+            </details>
+        `;
+        if (contentEl) {
+            contentEl.insertAdjacentHTML('beforeend', DOMPurify.sanitize(toolCallHtml, PURIFY_CONFIG));
+        }
         // Display execution timing badge
         if (data.durationMs != null && node) {
             const timingEl = document.createElement('span');
