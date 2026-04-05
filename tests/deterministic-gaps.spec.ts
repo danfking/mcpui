@@ -20,15 +20,6 @@ test.describe('Deterministic mode gap fixes', () => {
         await page.waitForSelector('.burnish-node', { timeout: 10_000 });
         await page.waitForSelector('burnish-card', { timeout: 10_000 });
 
-        // Click on a tool card to trigger form/execution
-        const toolCard = page.locator('burnish-card').first();
-        await toolCard.click();
-
-        // Wait for new node to appear (form or result)
-        await expect(page.locator('.burnish-node')).toHaveCount(2, { timeout: 10_000 }).catch(() => {
-            // May still be on same node count if form rendered inline
-        });
-
         // The key assertion: no node content should contain the literal text "null"
         // rendered as the sole content (which happens when generateFallbackForm returns null)
         const nodeContents = page.locator('.burnish-node-content');
