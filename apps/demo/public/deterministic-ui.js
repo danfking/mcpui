@@ -39,13 +39,10 @@ export function generateToolListingHtml(serverName, tools) {
     }
 
     const statItems = Object.entries(groups).map(([verb, items]) => {
-        const verbColor = HIGH_RISK_RE.test(verb + '_') ? 'error'
-            : MEDIUM_RISK_RE.test(verb + '_') ? 'warning'
-            : 'success';
         return {
             label: verb.charAt(0).toUpperCase() + verb.slice(1),
             value: String(items.length),
-            color: verbColor,
+            color: 'info',
         };
     });
     let html = `<burnish-stat-bar items='${escapeAttr(JSON.stringify(statItems))}'></burnish-stat-bar>`;
