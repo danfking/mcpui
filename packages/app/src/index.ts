@@ -41,3 +41,8 @@ export {
     type ToolRisk,
     type ConfigWarning,
 } from './risk-indicators.js';
+
+export {
+    PromptLibrary,
+    type PromptEntry,
+} from './prompt-library.js';
