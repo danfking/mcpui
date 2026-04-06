@@ -17,21 +17,21 @@ importers:
 
   apps/demo:
     dependencies:
-      '@burnish/app':
-        specifier: workspace:*
-        version: link:../../packages/app
-      '@burnish/components':
-        specifier: workspace:*
-        version: link:../../packages/components
-      '@burnish/renderer':
-        specifier: workspace:*
-        version: link:../../packages/renderer
-      '@burnish/server':
-        specifier: workspace:*
-        version: link:../../packages/server
       '@hono/node-server':
         specifier: ^1.14.0
         version: 1.19.11(hono@4.12.9)
+      burnish-app:
+        specifier: workspace:*
+        version: link:../../packages/app
+      burnish-components:
+        specifier: workspace:*
+        version: link:../../packages/components
+      burnish-renderer:
+        specifier: workspace:*
+        version: link:../../packages/renderer
+      burnish-server:
+        specifier: workspace:*
+        version: link:../../packages/server
       hono:
         specifier: ^4.7.0
         version: 4.12.9
@@ -57,15 +57,15 @@ importers:
 
   packages/cli:
     dependencies:
-      '@burnish/server':
-        specifier: workspace:*
-        version: link:../server
       '@hono/node-server':
         specifier: ^1.14.0
         version: 1.19.11(hono@4.12.9)
       '@modelcontextprotocol/sdk':
         specifier: ^1.12.1
         version: 1.28.0(zod@4.3.6)
+      burnish-server:
+        specifier: workspace:*
+        version: link:../server
       hono:
         specifier: ^4.7.0
         version: 4.12.9

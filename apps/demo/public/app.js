@@ -24,7 +24,7 @@ import {
     generateSummary, formatTimeAgo,
     TemplateStore, deriveToolKey,
     PromptLibrary,
-} from '@burnish/app';
+} from 'burnish-app';
 
 // ── Template learning ──
 import { recordPositiveSignal, getTemplateInstructions } from './template-learning.js';

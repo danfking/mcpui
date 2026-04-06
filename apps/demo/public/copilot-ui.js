@@ -8,7 +8,7 @@
  */
 
 import { escapeAttr } from './shared.js';
-import { transformOutput } from '@burnish/app';
+import { transformOutput } from 'burnish-app';
 
 let currentMode = localStorage.getItem('burnish:mode') || 'explorer';
 let copilotAvailable = false;

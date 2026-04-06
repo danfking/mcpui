@@ -25,7 +25,7 @@ import {
     ConversationStore,
     LlmOrchestrator,
     ALLOWED_MODELS,
-} from '@burnish/server';
+} from 'burnish-server';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = new Hono();
@@ -53,7 +53,7 @@ function detectBackend(): 'api' | 'cli' | 'openai' | 'none' {
 
 const llmBackend = detectBackend();
 
-// --- Instantiate @burnish/server classes ---
+// --- Instantiate burnish-server classes ---
 const mcpHub = new McpHub();
 const conversations = llmBackend !== 'none' ? new ConversationStore(1000) : null;
 const llm = llmBackend !== 'none' ? new LlmOrchestrator(mcpHub, conversations!) : null;

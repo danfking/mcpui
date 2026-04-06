@@ -1,5 +1,5 @@
 {
-  "name": "@burnish/app",
+  "name": "burnish-app",
   "version": "0.1.0",
   "description": "Headless SDK for Burnish — navigation, sessions, streaming, and output transformation",
   "type": "module",
@@ -11,7 +11,9 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
@@ -23,9 +25,6 @@
     "idb-keyval": "^6.0.0",
     "typescript": "^5.7.0"
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/danfking/burnish.git",
@@ -34,5 +33,12 @@
   "license": "AGPL-3.0",
   "homepage": "https://github.com/danfking/burnish",
   "author": "danfking",
-  "keywords": ["mcp", "model-context-protocol", "sdk", "sessions", "streaming", "burnish"]
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "sdk",
+    "sessions",
+    "streaming",
+    "burnish"
+  ]
 }

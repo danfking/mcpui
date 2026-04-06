@@ -27,7 +27,7 @@
     "clean": "rm -rf dist assets"
   },
   "dependencies": {
-    "@burnish/server": "workspace:*",
+    "burnish-server": "workspace:*",
     "@hono/node-server": "^1.14.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "hono": "^4.7.0",
@@ -44,9 +44,6 @@
     "dist",
     "assets"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "license": "AGPL-3.0",
   "repository": {
     "type": "git",
@@ -55,5 +52,13 @@
   },
   "homepage": "https://github.com/danfking/burnish",
   "author": "danfking",
-  "keywords": ["mcp", "model-context-protocol", "swagger", "ui", "explorer", "cli", "burnish"]
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "swagger",
+    "ui",
+    "explorer",
+    "cli",
+    "burnish"
+  ]
 }

@@ -3,7 +3,7 @@
  *
  * @example
  * ```ts
- * import { McpHub } from '@burnish/server';
+ * import { McpHub } from 'burnish-server';
  * import { startServerWithHub, buildApp } from 'burnish';
  *
  * const hub = new McpHub();

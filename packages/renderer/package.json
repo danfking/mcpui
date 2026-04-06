@@ -1,5 +1,5 @@
 {
-  "name": "@burnish/renderer",
+  "name": "burnish-renderer",
   "version": "0.1.0",
   "description": "Streaming HTML renderer and component mapper for Burnish",
   "type": "module",
@@ -11,16 +11,15 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist"
   },
   "devDependencies": {
     "typescript": "^5.7.0"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "repository": {
     "type": "git",
@@ -30,5 +29,12 @@
   "license": "AGPL-3.0",
   "homepage": "https://github.com/danfking/burnish",
   "author": "danfking",
-  "keywords": ["mcp", "model-context-protocol", "renderer", "streaming", "html", "burnish"]
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "renderer",
+    "streaming",
+    "html",
+    "burnish"
+  ]
 }
