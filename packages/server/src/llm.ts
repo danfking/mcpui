@@ -135,6 +135,7 @@ export class LlmOrchestrator {
         conversationId: string,
         requestModel?: string,
         noTools?: boolean,
+        extraInstructions?: string,
     ): AsyncGenerator<StreamChunk> {
         // For openai backend, allow any model; for others, validate against allowlist
         if (requestModel && this.backend !== 'openai' && !ALLOWED_MODELS.has(requestModel)) {
@@ -144,7 +145,7 @@ export class LlmOrchestrator {
 
         // First attempt
         let fullContent = '';
-        for await (const chunk of this.streamBackend(conversationId, useModel, noTools)) {
+        for await (const chunk of this.streamBackend(conversationId, useModel, noTools, extraInstructions)) {
             if (chunk.type === 'content') {
                 fullContent += chunk.text;
             }
@@ -170,7 +171,7 @@ export class LlmOrchestrator {
         // Inject a user message asking the model to reformat
         this.conversations.addMessage(conversationId, 'user', buildRetryPrompt());
 
-        for await (const chunk of this.streamBackend(conversationId, useModel, noTools)) {
+        for await (const chunk of this.streamBackend(conversationId, useModel, noTools, extraInstructions)) {
             yield chunk;
         }
     }
@@ -182,13 +183,14 @@ export class LlmOrchestrator {
         conversationId: string,
         useModel: string,
         noTools?: boolean,
+        extraInstructions?: string,
     ): AsyncGenerator<StreamChunk> {
         if (this.backend === 'cli') {
-            yield* this.streamResponseCli(conversationId, useModel, noTools);
+            yield* this.streamResponseCli(conversationId, useModel, noTools, extraInstructions);
         } else if (this.backend === 'openai') {
-            yield* this.streamResponseOpenai(conversationId, useModel, noTools);
+            yield* this.streamResponseOpenai(conversationId, useModel, noTools, extraInstructions);
         } else {
-            yield* this.streamResponseApi(conversationId, useModel, noTools);
+            yield* this.streamResponseApi(conversationId, useModel, noTools, extraInstructions);
         }
     }
 
@@ -200,11 +202,12 @@ export class LlmOrchestrator {
         conversationId: string,
         useModel = this.model,
         noTools?: boolean,
+        extraInstructions?: string,
     ): AsyncGenerator<StreamChunk> {
         const conv = this.conversations.get(conversationId);
         if (!conv) return;
 
-        const systemPrompt = noTools ? buildAdaptiveNoToolsPrompt(useModel) : buildAdaptiveSystemPrompt(useModel);
+        const systemPrompt = noTools ? buildAdaptiveNoToolsPrompt(useModel) : buildAdaptiveSystemPrompt(useModel, extraInstructions);
         const userMessage = this.buildUserMessage(conv);
 
         // Write system prompt to temp file (avoids command-line size limits)
@@ -416,6 +419,7 @@ export class LlmOrchestrator {
         conversationId: string,
         useModel = this.model,
         noTools?: boolean,
+        extraInstructions?: string,
     ): AsyncGenerator<StreamChunk> {
         if (!this.client) throw new Error('LLM not configured — call configure() first');
 
@@ -443,7 +447,7 @@ export class LlmOrchestrator {
                 : {}),
         }));
 
-        const systemPrompt = noTools ? buildAdaptiveNoToolsPrompt(useModel) : buildAdaptiveSystemPrompt(useModel);
+        const systemPrompt = noTools ? buildAdaptiveNoToolsPrompt(useModel) : buildAdaptiveSystemPrompt(useModel, extraInstructions);
         const system: Anthropic.MessageCreateParams['system'] = [
             {
                 type: 'text' as const,
@@ -665,13 +669,14 @@ export class LlmOrchestrator {
         conversationId: string,
         useModel = this.model,
         noTools?: boolean,
+        extraInstructions?: string,
     ): AsyncGenerator<StreamChunk> {
         if (!this.openaiClient) throw new Error('OpenAI client not configured — call configure() first');
 
         const conv = this.conversations.get(conversationId);
         if (!conv) return;
 
-        const systemPrompt = noTools ? buildAdaptiveNoToolsPrompt(useModel) : buildAdaptiveSystemPrompt(useModel);
+        const systemPrompt = noTools ? buildAdaptiveNoToolsPrompt(useModel) : buildAdaptiveSystemPrompt(useModel, extraInstructions);
         const messages: OpenAI.ChatCompletionMessageParam[] = [
             { role: 'system', content: systemPrompt },
         ];
