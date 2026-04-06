@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import type { McpHub, ToolDef } from './mcp-hub.js';
 import type { ConversationStore, Conversation } from './conversation.js';
-import { buildSystemPrompt, buildNoToolsPrompt, buildFormattingPrompt, buildRetryPrompt } from './prompt-template.js';
+import { buildSystemPrompt, buildNoToolsPrompt, buildFormattingPrompt, buildRetryPrompt, buildAdaptiveSystemPrompt, buildAdaptiveNoToolsPrompt } from './prompt-template.js';
 import { resolveIntent } from './intent-resolver.js';
 import { isWriteTool } from './guards.js';
 
@@ -204,7 +204,7 @@ export class LlmOrchestrator {
         const conv = this.conversations.get(conversationId);
         if (!conv) return;
 
-        const systemPrompt = noTools ? buildNoToolsPrompt() : buildSystemPrompt();
+        const systemPrompt = noTools ? buildAdaptiveNoToolsPrompt(useModel) : buildAdaptiveSystemPrompt(useModel);
         const userMessage = this.buildUserMessage(conv);
 
         // Write system prompt to temp file (avoids command-line size limits)
@@ -443,7 +443,7 @@ export class LlmOrchestrator {
                 : {}),
         }));
 
-        const systemPrompt = noTools ? buildNoToolsPrompt() : buildSystemPrompt();
+        const systemPrompt = noTools ? buildAdaptiveNoToolsPrompt(useModel) : buildAdaptiveSystemPrompt(useModel);
         const system: Anthropic.MessageCreateParams['system'] = [
             {
                 type: 'text' as const,
@@ -671,7 +671,7 @@ export class LlmOrchestrator {
         const conv = this.conversations.get(conversationId);
         if (!conv) return;
 
-        const systemPrompt = noTools ? buildNoToolsPrompt() : buildSystemPrompt();
+        const systemPrompt = noTools ? buildAdaptiveNoToolsPrompt(useModel) : buildAdaptiveSystemPrompt(useModel);
         const messages: OpenAI.ChatCompletionMessageParam[] = [
             { role: 'system', content: systemPrompt },
         ];

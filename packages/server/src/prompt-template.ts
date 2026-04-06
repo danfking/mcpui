@@ -224,3 +224,160 @@ ${truncated}
 - Start your response directly with a <burnish- tag
 - NEVER start with text like "Here are..." or "Sure!"`;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Model-adaptive prompt selection
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Model size tiers for prompt adaptation.
+ *
+ * - "small"  — models ≤ ~13B parameters (e.g., phi, gemma:7b, llama3:8b, mistral:7b)
+ * - "large"  — everything else (Claude, GPT-4, llama3:70b, mixtral, etc.)
+ */
+export type ModelSize = 'small' | 'large';
+
+/**
+ * Regex patterns that identify small local models by name.
+ * Matches common naming conventions from Ollama, llama.cpp, and similar runtimes.
+ */
+const SMALL_MODEL_PATTERNS = [
+    /\b(?:1|1\.5|2|3|4|7|8|9|10|11|12|13)b\b/i,        // explicit parameter count ≤ 13B
+    /\bphi\b/i,                                           // Microsoft Phi family (all ≤ 14B)
+    /\bgemma(?::|-)?(?:2b|7b|2|7)\b/i,                   // Google Gemma small variants
+    /\btinyllama\b/i,                                     // TinyLlama
+    /\bstablelm\b/i,                                      // StableLM (small)
+    /\bqwen2?(?::|-)?(?:0\.5|1\.5|4|7)\b/i,              // Qwen small variants
+    /\borca-mini\b/i,                                     // Orca Mini
+    /\bsmollm\b/i,                                        // SmolLM
+];
+
+/**
+ * Detect model size tier from the model name string.
+ *
+ * Uses pattern matching on common model naming conventions. When in doubt
+ * (e.g., custom fine-tune names), defaults to "large" so the full prompt
+ * is used — a safe fallback since large models handle verbose prompts well.
+ */
+export function detectModelSize(modelName: string): ModelSize {
+    const normalized = modelName.toLowerCase().trim();
+
+    // Well-known large model families — always "large" regardless of suffix
+    if (/^(claude|gpt-4|gpt-4o|o1|o3|sonnet|opus|haiku)/.test(normalized)) {
+        return 'large';
+    }
+
+    for (const pattern of SMALL_MODEL_PATTERNS) {
+        if (pattern.test(normalized)) {
+            return 'small';
+        }
+    }
+
+    return 'large';
+}
+
+/**
+ * Simplified system prompt for small local models (≤ 13B parameters).
+ *
+ * Key differences from the full prompt:
+ * - Fewer components (only the 4 most common)
+ * - Shorter attribute docs with inline examples
+ * - Single concrete example instead of multiple
+ * - No cross-server workflow instructions
+ * - No narrative layout guidance
+ * - Explicit "do X, don't do Y" rules instead of nuanced guidelines
+ */
+export function buildSmallModelPrompt(extraInstructions = ''): string {
+    return `You are an AI assistant. You generate HTML using burnish-* web components.
+
+## Rules
+1. Output ONLY burnish-* HTML. No markdown. No code fences. No explanation text.
+2. Start every response with <burnish-stat-bar>.
+3. Wrap <burnish-card> elements inside <burnish-section>. Never use bare cards.
+4. End with <burnish-actions> for next steps.
+
+## Components
+
+<burnish-stat-bar items='[{"label":"Name","value":"N","color":"success|warning|error|info"}]'>
+Summary bar. Always first.
+
+<burnish-section label="Group Name" count="3" status="success|warning|error">
+Groups cards. Wrap cards in this.
+
+<burnish-card title="Item" status="info" body="Description" item-id="unique-id">
+One item inside a section.
+
+<burnish-actions actions='[{"label":"Next step","action":"read","prompt":"do something","icon":"list"}]'>
+Next-step buttons. Always last. action is "read" or "write". Icons: comment, edit, delete, refresh, tag, list, view, add, search, info.
+
+## Example
+<burnish-stat-bar items='[{"label":"Files","value":"3","color":"success"},{"label":"Errors","value":"1","color":"error"}]'></burnish-stat-bar>
+<burnish-section label="Files" count="3" status="success">
+<burnish-card title="readme.md" status="info" body="Project readme" item-id="readme"></burnish-card>
+<burnish-card title="index.ts" status="info" body="Entry point" item-id="index"></burnish-card>
+<burnish-card title="config.json" status="info" body="Configuration" item-id="config"></burnish-card>
+</burnish-section>
+<burnish-section label="Errors" count="1" status="error">
+<burnish-card title="missing.ts" status="error" body="File not found" item-id="missing"></burnish-card>
+</burnish-section>
+<burnish-actions actions='[{"label":"Refresh","action":"read","prompt":"List files again","icon":"refresh"}]'></burnish-actions>
+
+## Do NOT
+- Start with "Sure!" or "Here are the results"
+- Use markdown (# headers, **bold**, \`code\`)
+- Use HTML tags like <div>, <p>, <table>
+- Put <burnish-card> outside of <burnish-section>
+
+${extraInstructions}`;
+}
+
+/**
+ * Simplified no-tools prompt for small models.
+ * Mirrors buildNoToolsPrompt() but with reduced component set and simpler rules.
+ */
+export function buildSmallModelNoToolsPrompt(): string {
+    return `You generate HTML using burnish-* web components. No markdown. No code fences. No text.
+
+## Components
+- <burnish-stat-bar items='[{"label":"Name","value":"N","color":"success|warning|error|info"}]'>
+- <burnish-section label="Group" count="N" status="success|warning|error">
+- <burnish-card title="Item" status="info" body="Description" item-id="id">
+
+## Rules
+1. Start with <burnish-stat-bar>.
+2. Put cards inside <burnish-section>.
+3. Output ONLY burnish-* HTML.
+
+## Example
+<burnish-stat-bar items='[{"label":"Tools","value":"3","color":"info"}]'></burnish-stat-bar>
+<burnish-section label="Tools" count="3" status="info">
+<burnish-card title="read_file" status="info" body="Read a file" item-id="read_file"></burnish-card>
+<burnish-card title="write_file" status="info" body="Write a file" item-id="write_file"></burnish-card>
+<burnish-card title="list_dir" status="info" body="List directory" item-id="list_dir"></burnish-card>
+</burnish-section>`;
+}
+
+/**
+ * Select the appropriate system prompt based on model size.
+ *
+ * For small models, returns a simplified prompt with fewer components and
+ * explicit examples. For large models, returns the full prompt.
+ */
+export function buildAdaptiveSystemPrompt(modelName: string, extraInstructions = ''): string {
+    const size = detectModelSize(modelName);
+    if (size === 'small') {
+        return buildSmallModelPrompt(extraInstructions);
+    }
+    return buildSystemPrompt(extraInstructions);
+}
+
+/**
+ * Select the appropriate no-tools prompt based on model size.
+ */
+export function buildAdaptiveNoToolsPrompt(modelName: string): string {
+    const size = detectModelSize(modelName);
+    if (size === 'small') {
+        return buildSmallModelNoToolsPrompt();
+    }
+    return buildNoToolsPrompt();
+}
