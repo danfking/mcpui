@@ -22,7 +22,11 @@ import {
     transformOutput,
     isWriteTool, generateFallbackForm,
     generateSummary, formatTimeAgo,
+    TemplateStore, deriveToolKey,
 } from '@burnish/app';
+
+// ── Template learning ──
+import { recordPositiveSignal, getTemplateInstructions } from './template-learning.js';
 
 // ── Shared imports ──
 import { PURIFY_CONFIG, WRITE_TOOL_RE, escapeHtml, escapeAttr } from './shared.js';
@@ -985,6 +989,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Branch from the node containing this card
         const nodeEl = e.target.closest('.burnish-node');
         if (nodeEl?.dataset?.nodeId) branchFromNodeId = nodeEl.dataset.nodeId;
+
+        // Template learning: record drill-down as a positive signal
+        if (nodeEl?.dataset?.nodeId) {
+            const session = getActiveSession();
+            const parentNode = session?.nodes?.find(n => n.id === nodeEl.dataset.nodeId);
+            if (parentNode?.response && parentNode?.prompt) {
+                const toolHint = parentNode._toolHint;
+                recordPositiveSignal(
+                    parentNode.response,
+                    parentNode.prompt,
+                    'drill-down',
+                    toolHint?.toolName,
+                    null,
+                );
+            }
+        }
 
         // Deterministic path: if itemId matches a known tool, render form or execute directly
         const schema = toolSchemaCache[itemId];

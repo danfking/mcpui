@@ -6,6 +6,7 @@ import { PURIFY_CONFIG, WRITE_TOOL_RE, escapeHtml, escapeAttr } from './shared.j
 import { buildResultHtml } from './view-renderers.js';
 import { getCurrentMode, createInsightSlot, streamInsight } from './copilot-ui.js';
 import { recordToolPerf, refreshPerfPanel } from './perf-panel.js';
+import { getTemplateInstructions } from './template-learning.js';
 
 // ── Inline risk assessment (mirrors @burnish/app risk-indicators.ts) ──
 
@@ -231,11 +232,13 @@ export async function executeToolDirect(toolName, args, label) {
             const headerEl = document.querySelector('[data-node-id="' + node.id + '"] .burnish-node-header');
             if (headerEl) headerEl.appendChild(timingEl);
         }
-        // Stream AI insights in copilot mode
+        // Stream AI insights in copilot mode (with learned templates)
         if (getCurrentMode() === 'copilot' && contentEl) {
             const insightSlot = createInsightSlot(contentEl);
             const summary = JSON.stringify(data.result).substring(0, 2000);
-            streamInsight(insightSlot, toolName, summary, PURIFY_CONFIG);
+            getTemplateInstructions(toolName).then(extra => {
+                streamInsight(insightSlot, toolName, summary, PURIFY_CONFIG, extra || undefined);
+            });
         }
     } catch (err) {
         var errorHtml = '<burnish-card title="Error" status="error" body="' + escapeAttr(err.message) + '"></burnish-card>';
