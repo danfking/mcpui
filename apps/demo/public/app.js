@@ -87,7 +87,7 @@ let sessions = [];
 let activeSessionId = null;
 
 function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    return crypto.randomUUID();
 }
 
 function getActiveSession() {
@@ -255,7 +255,7 @@ function updateBreadcrumb() {
 
 // ── Session List Rendering ──
 function stripHtml(text) {
-    return text.replace(/<[^>]*>/g, '').replace(/&\w+;/g, ' ').replace(/\s+/g, ' ');
+    return text.replace(/<[^>]*>/g, '').replace(/&(?:#[xX]?[\da-fA-F]+|\w+);/g, ' ').replace(/\s+/g, ' ');
 }
 
 function sessionMatchesSearch(session, query) {
