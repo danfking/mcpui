@@ -48,3 +48,10 @@ export {
     type ModelStats,
     type ToolStats,
 } from './perf-store.js';
+
+export {
+    TemplateStore,
+    extractHtmlStructure,
+    deriveToolKey,
+    type LearnedTemplate,
+} from './template-store.js';

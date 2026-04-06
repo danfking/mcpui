@@ -292,20 +292,23 @@ function appendPivotSuggestions(responseEl, PURIFY_CONFIG, onNodeCreated) {
  * Stream an AI insight into the given slot element.
  * Calls /api/chat to get a stream URL, then connects via EventSource.
  */
-export async function streamInsight(slot, toolName, resultSummary, PURIFY_CONFIG) {
+export async function streamInsight(slot, toolName, resultSummary, PURIFY_CONFIG, extraInstructions) {
     slot.style.display = 'block';
     slot.style.opacity = '1';
     slot.setAttribute('aria-busy', 'true');
     slot.innerHTML = '<div class="burnish-insight-loading"><div class="burnish-spinner"></div> Analyzing results...</div>';
 
     try {
+        const body = {
+            prompt: 'Analyze this ' + toolName + ' result and provide brief insights. Use burnish-stat-bar for key metrics and burnish-card for recommendations:\n' + resultSummary,
+            noTools: true
+        };
+        if (extraInstructions) body.extraInstructions = extraInstructions;
+
         const chatRes = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt: 'Analyze this ' + toolName + ' result and provide brief insights. Use burnish-stat-bar for key metrics and burnish-card for recommendations:\n' + resultSummary,
-                noTools: true
-            })
+            body: JSON.stringify(body)
         });
 
         if (!chatRes.ok) {
