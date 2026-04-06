@@ -45,7 +45,7 @@ export function generateToolListingHtml(serverName, tools) {
             color: 'info',
         };
     });
-    let html = `<burnish-stat-bar items='${escapeAttr(JSON.stringify(statItems))}'></burnish-stat-bar>`;
+    let html = `<burnish-stat-bar variant="compact" items='${escapeAttr(JSON.stringify(statItems))}'></burnish-stat-bar>`;
 
     html += `<div class="burnish-tool-filter-container">
     <input type="text" class="burnish-tool-filter" placeholder="Filter tools..." autocomplete="off">
