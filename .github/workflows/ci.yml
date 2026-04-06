@@ -52,6 +52,8 @@ jobs:
           VISUAL_FILES=$(git diff --name-only origin/main...HEAD -- \
             'apps/demo/public/**' \
             'packages/components/**' \
+            'packages/renderer/**' \
+            '**/output-transformer*' \
             '**/*.css' || true)
           if [ -n "$VISUAL_FILES" ]; then
             echo "has_visual_changes=true" >> "$GITHUB_OUTPUT"
