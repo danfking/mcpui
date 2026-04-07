@@ -20,8 +20,9 @@ export class BurnishCard extends LitElement {
             width: 340px;
             max-width: 100%;
             flex: 1 1 340px;
-            min-width: 200px;
+            min-width: 0;
             box-sizing: border-box;
+            overflow: hidden;
         }
         :host([expanded]) {
             width: 100%;
@@ -68,6 +69,7 @@ export class BurnishCard extends LitElement {
             border-radius: var(--burnish-radius-md, 4px);
             border: 1px solid var(--burnish-border-muted, #E5DDDD);
             overflow: hidden;
+            box-sizing: border-box;
             box-shadow: var(--burnish-shadow-sm);
             transition: transform var(--burnish-transition-fast), box-shadow var(--burnish-transition-fast);
             position: relative;
@@ -85,10 +87,10 @@ export class BurnishCard extends LitElement {
         }
         .card:focus { outline: 2px solid var(--burnish-accent, #8B3A3A); outline-offset: 2px; }
         .card[data-status="success"]::before,
-        .card[data-status="healthy"]::before { background: var(--burnish-success, #16a34a); }
-        .card[data-status="warning"]::before { background: var(--burnish-warning, #ca8a04); }
+        .card[data-status="healthy"]::before { background: var(--burnish-success, #22c55e); }
+        .card[data-status="warning"]::before { background: var(--burnish-warning, #eab308); }
         .card[data-status="error"]::before,
-        .card[data-status="failing"]::before { background: var(--burnish-error, #dc2626); }
+        .card[data-status="failing"]::before { background: var(--burnish-error, #ef4444); }
         .card[data-status="info"]::before { background: var(--burnish-info, #6366f1); }
         .card-header {
             padding: var(--burnish-space-md, 12px) var(--burnish-space-lg, 16px) var(--burnish-space-sm, 8px);
@@ -99,7 +101,7 @@ export class BurnishCard extends LitElement {
             font-size: var(--burnish-font-size-xs, 11px); font-weight: 600;
             text-transform: uppercase; letter-spacing: 0.5px;
             padding: 2px var(--burnish-space-sm, 8px); border-radius: 10px;
-            flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            flex-shrink: 0; white-space: nowrap;
         }
         .card-badge[data-status="success"], .card-badge[data-status="healthy"] {
             color: var(--burnish-success); background: var(--burnish-border-success);
