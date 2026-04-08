@@ -7,7 +7,8 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { resolve, dirname, normalize, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFile } from 'node:fs/promises';
+import { readFile, access } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import open from 'open';
 
 import { McpHub, isWriteTool } from '@burnishdev/server';
@@ -236,6 +237,16 @@ export async function startServer(opts: CliOptions): Promise<void> {
     console.log('[burnish] Connecting to MCP server...');
 
     const configPath = await buildConfigFile(opts);
+
+    // Validate config file exists before starting
+    if (opts.configPath) {
+        try {
+            await access(configPath, constants.R_OK);
+        } catch {
+            console.error(`[burnish] Config file not found: ${configPath}`);
+            process.exit(1);
+        }
+    }
 
     // Start the HTTP server immediately (before MCP init completes)
     const app = buildApp(mcpHub);
