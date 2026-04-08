@@ -15,16 +15,16 @@
     --burnish-link: #7C3030;
 
     /* ── Colors: Status ── */
-    --burnish-success: #16a34a;
-    --burnish-warning: #ca8a04;
-    --burnish-error: #dc2626;
+    --burnish-success: #22c55e;
+    --burnish-warning: #eab308;
+    --burnish-error: #ef4444;
     --burnish-muted: #9C8F8F;
     --burnish-info: #6366f1;
 
     /* ── Colors: Status Borders (lighter, for bars/indicators) ── */
-    --burnish-border-success: #bbf7d0;
-    --burnish-border-warning: #fef08a;
-    --burnish-border-error: #fecaca;
+    --burnish-border-success: #dcfce7;
+    --burnish-border-warning: #fef9c3;
+    --burnish-border-error: #fee2e2;
     --burnish-border-muted: #E5DDDD;
     --burnish-border-info: #c7d2fe;
 
@@ -34,6 +34,10 @@
     --burnish-text-muted: #9C8F8F;
     --burnish-border: #E5DDDD;
     --burnish-border-light: #F0EAEA;
+
+    /* ── Form Inputs ── */
+    --burnish-input-bg: #ffffff;
+    --burnish-input-border: #E5DDDD;
 
     /* ── Spacing ── */
     --burnish-space-xs: 4px;
@@ -91,6 +95,8 @@
         --burnish-text-muted: #7A6B6B;
         --burnish-border: #3D3232;
         --burnish-border-light: #332929;
+        --burnish-input-bg: #171212;
+        --burnish-input-border: #544646;
         --burnish-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
         --burnish-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
         --burnish-muted: #7A6B6B;
@@ -119,6 +125,8 @@
     --burnish-text-muted: #7A6B6B;
     --burnish-border: #3D3232;
     --burnish-border-light: #332929;
+    --burnish-input-bg: #171212;
+    --burnish-input-border: #544646;
     --burnish-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
     --burnish-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
     --burnish-muted: #7A6B6B;
