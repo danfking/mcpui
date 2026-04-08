@@ -70,11 +70,17 @@ export class McpHub {
         let config: McpServersConfig;
         try {
             await access(configPath, constants.R_OK);
+        } catch {
+            throw new Error(`Config file not found: ${configPath}`);
+        }
+
+        try {
             const raw = await readFile(configPath, 'utf-8');
             config = JSON.parse(raw);
-        } catch {
-            console.warn('[mcp-hub] No config file found at', configPath);
-            return;
+        } catch (err) {
+            throw new Error(
+                `Failed to read config file at ${configPath}: ${err instanceof Error ? err.message : err}`,
+            );
         }
 
         await Promise.allSettled(
