@@ -42,6 +42,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish scoped packages (@burnishdev/*)
-        run: pnpm --filter '@burnishdev/*' publish --no-git-checks --access public || echo "Scoped packages skipped — @burnish org may not exist yet"
+        run: pnpm --filter '@burnishdev/*' publish --no-git-checks --access public || echo "Scoped packages skipped — @burnishdev publish may have failed"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
