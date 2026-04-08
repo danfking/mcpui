@@ -46,22 +46,24 @@ export class BurnishCard extends LitElement {
         .card:hover .expand-btn { display: flex; }
         .expand-btn:hover { color: var(--burnish-accent, #8B3A3A); }
         .source-badge {
-            position: absolute;
-            bottom: var(--burnish-space-sm, 8px);
-            right: var(--burnish-space-sm, 8px);
+            display: block;
+            text-align: right;
+            padding: var(--burnish-space-xs, 4px) var(--burnish-space-sm, 8px) var(--burnish-space-xs, 4px);
             font-size: 10px;
             font-weight: 500;
             color: var(--burnish-text-muted, #9C8F8F);
-            background: var(--burnish-surface-alt, #F8F5F5);
-            border: 1px solid var(--burnish-border-light, #F0EAEA);
-            border-radius: 3px;
-            padding: 1px 6px;
             line-height: 1.4;
             letter-spacing: 0.3px;
             opacity: 0.7;
             transition: opacity var(--burnish-transition-fast);
             pointer-events: none;
-            z-index: 1;
+        }
+        .source-badge span {
+            display: inline-block;
+            background: var(--burnish-surface-alt, #F8F5F5);
+            border: 1px solid var(--burnish-border-light, #F0EAEA);
+            border-radius: 3px;
+            padding: 1px 6px;
         }
         .card:hover .source-badge { opacity: 1; }
         .card {
@@ -325,7 +327,7 @@ export class BurnishCard extends LitElement {
                     `;
                 })()}
                 ${this['item-id'] ? html`<div class="card-action" role="button" tabindex="0">Explore \u2192</div>` : ''}
-                ${this.source ? html`<span class="source-badge" title="Source: ${this.source}">${this.source}</span>` : ''}
+                ${this.source ? html`<div class="source-badge" title="Source: ${this.source}"><span>${this.source}</span></div>` : ''}
             </div>
         `;
     }
