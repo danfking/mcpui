@@ -126,13 +126,24 @@ export function initPromptBar(PURIFY_CONFIG, sessionHelpers) {
     // Show/hide based on mode
     promptBar.style.display = currentMode === 'llm-insight' ? 'flex' : 'none';
 
+    // Auto-resize textarea to fit content
+    function autoResize() {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+    }
+    input.addEventListener('input', autoResize);
+
     input.addEventListener('keydown', async (e) => {
+        // Allow Shift+Enter for newlines
+        if (e.key === 'Enter' && e.shiftKey) return;
         if (e.key !== 'Enter' || isStreaming) return;
+        e.preventDefault();
 
         const prompt = input.value.trim();
         if (!prompt) return;
 
         input.value = '';
+        autoResize();
         const pivot = isPivotCommand(prompt);
 
         await submitLlmInsightPrompt(prompt, PURIFY_CONFIG, sessionHelpers, pivot);
