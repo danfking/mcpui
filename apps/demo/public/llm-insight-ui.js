@@ -52,8 +52,14 @@ export function renderModeToggle(container) {
     container.style.display = '';
     container.innerHTML = `
         <div class="burnish-mode-toggle">
-            <button class="burnish-mode-btn ${currentMode === 'explorer' ? 'active' : ''}" data-mode="explorer">Explorer</button>
-            <button class="burnish-mode-btn ${currentMode === 'llm-insight' ? 'active' : ''}" data-mode="llm-insight">LLM Insight</button>
+            <button class="burnish-mode-btn ${currentMode === 'explorer' ? 'active' : ''}" data-mode="explorer">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <span class="burnish-mode-label">Explorer</span>
+            </button>
+            <button class="burnish-mode-btn ${currentMode === 'llm-insight' ? 'active' : ''}" data-mode="llm-insight">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4c0 1.1-.9 2-2 2h-4c-1.1 0-2-.9-2-2a4 4 0 0 1 4-4z"/><path d="M12 8v8"/><path d="M8 12h8"/><circle cx="12" cy="20" r="2"/></svg>
+                <span class="burnish-mode-label">LLM Insight</span>
+            </button>
         </div>
     `;
     container.querySelectorAll('.burnish-mode-btn').forEach(btn => {

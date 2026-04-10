@@ -1099,21 +1099,53 @@ body {
     50% { opacity: 0.4; }
 }
 
+/* ── Mode Toggle ── */
+.burnish-mode-toggle {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--burnish-surface-alt, #F0EAEA);
+    border-radius: 6px;
+}
+.burnish-mode-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--burnish-text-secondary, #6B5A5A);
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+.burnish-mode-btn.active {
+    background: var(--burnish-surface, #fff);
+    color: var(--burnish-text, #2D1F1F);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* ── Sidebar Backdrop (mobile overlay) ── */
+.burnish-sidebar-backdrop {
+    display: none;
+    position: fixed;
+    top: 48px;
+    left: 0;
+    width: 100%;
+    height: calc(100% - 48px);
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 4;
+}
+.burnish-sidebar-backdrop.visible { display: block; }
+
 /* ── Responsive ── */
 @media (max-width: 1024px) {
     .burnish-session-panel { left: -260px; transition: left var(--burnish-transition-normal); }
     .burnish-session-panel.open { left: 0; }
     .burnish-content { margin-left: 0; }
     .burnish-mobile-only { display: flex; }
-    .burnish-sidebar-backdrop {
-        display: none;
-        position: fixed;
-        inset: 0;
-        top: 48px;
-        background: rgba(0, 0, 0, 0.4);
-        z-index: 4;
-    }
-    .burnish-sidebar-backdrop.visible { display: block; }
 }
 
 @media (max-width: 768px) {
@@ -1125,7 +1157,8 @@ body {
     .burnish-header-left { min-width: 0; overflow: hidden; gap: 6px; }
     .burnish-header-right { min-width: 0; overflow: hidden; gap: 2px; flex-shrink: 1; }
     .burnish-logo { font-size: 14px; letter-spacing: 0.5px; }
-    .burnish-mode-toggle { display: none; }
+    .burnish-mode-label { display: none; }
+    .burnish-mode-btn { padding: 4px 6px; }
     .burnish-breadcrumb { display: none; }
     .burnish-theme-toggle span { display: none; }
     .burnish-empty-state { padding: 40px 16px 40px; }
@@ -1164,30 +1197,6 @@ body {
     color: var(--burnish-text-muted, #9C8F8F);
     text-align: center;
     border-top: 1px solid var(--burnish-border, #E5DDDD);
-}
-
-/* ── Mode Toggle ── */
-.burnish-mode-toggle {
-    display: flex;
-    gap: 2px;
-    padding: 2px;
-    background: var(--burnish-surface-alt, #F0EAEA);
-    border-radius: 6px;
-}
-.burnish-mode-btn {
-    padding: 4px 12px;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    font-size: 12px;
-    cursor: pointer;
-    color: var(--burnish-text-secondary, #6B5A5A);
-    transition: all 0.15s ease;
-}
-.burnish-mode-btn.active {
-    background: var(--burnish-surface, #fff);
-    color: var(--burnish-text, #2D1F1F);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 /* ── AI Insight Slot ── */
