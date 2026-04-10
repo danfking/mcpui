@@ -16,7 +16,10 @@ COPY packages/app/package.json packages/app/
 COPY packages/example-server/package.json packages/example-server/
 COPY apps/demo/package.json apps/demo/
 
-RUN pnpm install --frozen-lockfile --ignore-scripts && pnpm rebuild
+RUN pnpm config set ignore-scripts true \
+    && pnpm install --frozen-lockfile \
+    && pnpm rebuild \
+    && pnpm config delete ignore-scripts
 
 # Copy source and build
 COPY packages/ packages/
