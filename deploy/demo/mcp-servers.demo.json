@@ -6,7 +6,7 @@
     },
     "demo-database": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "/data/demo.db"]
+      "args": ["-y", "mcp-server-sqlite-npx", "--db-path", "/data/demo.db"]
     },
     "showcase": {
       "command": "node",
