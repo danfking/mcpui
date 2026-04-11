@@ -151,34 +151,28 @@ server.tool(
   "Returns monthly sales data with categories, amounts, and trends for chart visualization",
   {},
   async () => {
-    const salesData = {
-      period: "2025 Q1-Q4",
-      currency: "USD",
-      totalRevenue: "$1,466,000",
-      topCategory: "Software",
-      growthRate: "97.6%",
-      averageMonthly: "$122,167",
-      janTotal: "$85,000",
-      febTotal: "$92,000",
-      marTotal: "$99,000",
-      q1Revenue: "$276,000",
-      aprTotal: "$105,000",
-      mayTotal: "$111,000",
-      junTotal: "$121,000",
-      q2Revenue: "$337,000",
-      julTotal: "$128,000",
-      augTotal: "$131,000",
-      sepTotal: "$128,000",
-      q3Revenue: "$387,000",
-      octTotal: "$150,000",
-      novTotal: "$148,000",
-      decTotal: "$168,000",
-      q4Revenue: "$466,000",
+    const summary = [
+      { label: "Total Revenue", value: "$1,466,000" },
+      { label: "Growth Rate", value: "97.6%" },
+      { label: "Top Category", value: "Software" },
+      { label: "Avg Monthly", value: "$122,167" },
+    ];
+
+    const chart = {
+      title: "Monthly Revenue — 2025",
+      labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+      datasets: [
+        {
+          label: "Revenue ($k)",
+          data: [85, 92, 99, 105, 111, 121, 128, 131, 128, 150, 148, 168],
+        },
+      ],
     };
 
     return {
       content: [
-        { type: "text" as const, text: JSON.stringify(salesData, null, 2) },
+        { type: "text" as const, text: JSON.stringify(summary, null, 2) },
+        { type: "text" as const, text: JSON.stringify(chart, null, 2) },
       ],
     };
   }
