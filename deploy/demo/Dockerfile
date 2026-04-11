@@ -24,7 +24,7 @@ COPY apps/demo/ apps/demo/
 RUN pnpm --filter '!burnish' -r build
 
 # Pre-install MCP server packages so npx doesn't download at runtime
-RUN npm install -g @modelcontextprotocol/server-filesystem@latest @modelcontextprotocol/server-sqlite@latest
+RUN npm install -g @modelcontextprotocol/server-filesystem@latest mcp-server-sqlite-npx@latest
 
 # Stage 2: Runtime
 FROM node:20-slim AS runner
