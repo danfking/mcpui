@@ -439,8 +439,13 @@ export function buildResultHtml(result, label, sourceToolName, sourceName, isErr
             }
             if (parts.length > 1 && buf === '') {
                 let html = '';
+                // Check if all parts are metric-shaped — wrap in grid
+                const allMetrics = parts.every(p => typeof p === 'object' && !Array.isArray(p) && 'label' in p && 'value' in p && ('trend' in p || 'unit' in p));
                 for (const part of parts) {
                     html += renderParsedResult(part, label, sourceToolName, sourceName);
+                }
+                if (allMetrics) {
+                    html = `<div class="burnish-metrics-grid">${html}</div>`;
                 }
                 return `<div class="burnish-result-wrapper" data-raw-result="${escapeAttr(result.substring(0, 50000))}">${html}</div>`;
             }
