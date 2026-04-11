@@ -203,7 +203,8 @@ export function renderParsedResult(parsed, label, sourceToolName, sourceName) {
         }
 
         const arrayKeys = ['items','results','data','entries','records','rows','nodes',
-            'repositories','issues','files','commits','pull_requests','comments'];
+            'repositories','issues','files','commits','pull_requests','comments',
+            'sections','articles','categories','groups','tasks','events','messages'];
         const nestedKey = arrayKeys.find(k => Array.isArray(parsed[k]) && parsed[k].length > 0);
 
         if (nestedKey && typeof parsed[nestedKey][0] === 'object') {
