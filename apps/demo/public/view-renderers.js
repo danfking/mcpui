@@ -175,7 +175,17 @@ export function renderParsedResult(parsed, label, sourceToolName, sourceName) {
                 const status = section.status || 'info';
                 html += `<burnish-section label="${escapeAttr(String(title))}" count="${count}" status="${status}">`;
                 if (nestedArrayKey) {
-                    html += renderParsedResult(section[nestedArrayKey], title, sourceToolName, sourceName);
+                    // Render nested items as compact cards directly (no stat-bar/view-switcher)
+                    for (const item of section[nestedArrayKey]) {
+                        if (typeof item === 'object' && item !== null) {
+                            const titleFields = ['name', 'title', 'path', 'filename', 'full_name', 'login', 'label'];
+                            const itemTitle = titleFields.reduce((acc, k) => acc || (item[k] ? String(item[k]) : ''), '') || title;
+                            const meta = Object.entries(item)
+                                .filter(([, v]) => (typeof v !== 'object' || v === null) && typeof v !== 'boolean')
+                                .map(([k, v]) => ({ label: k.replace(/_/g, ' '), value: String(v ?? '') }));
+                            html += `<burnish-card title="${escapeAttr(itemTitle)}" status="${escapeAttr(item.status || 'success')}" meta='${escapeAttr(JSON.stringify(meta))}'${sourceAttr}></burnish-card>`;
+                        }
+                    }
                 }
                 html += `</burnish-section>`;
             }
