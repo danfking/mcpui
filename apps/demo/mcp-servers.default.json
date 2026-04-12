@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "showcase": {
+      "command": "node",
+      "args": ["../../packages/example-server/dist/index.js"]
+    }
+  }
+}
