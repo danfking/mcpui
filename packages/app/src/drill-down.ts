@@ -86,7 +86,7 @@ export function generateFallbackForm(
             field.placeholder = prop.description;
         }
         if (prop.default !== undefined) field.value = String(prop.default);
-        if (prop.enum) field.options = prop.enum.map(String);
+        if (prop.enum) field.options = prop.enum.map((v: unknown) => ({ value: String(v), label: String(v) }));
         return field;
     });
     if (fields.length === 0) return null;
