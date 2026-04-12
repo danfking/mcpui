@@ -6,7 +6,6 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm -r build && pnpm --filter demo dev",
-    "dev:nomodel": "pnpm -r build && pnpm --filter demo dev:nomodel",
     "test": "npx playwright test",
     "test:ci": "npx playwright test --project=chromium",
     "test:unit": "vitest run",
@@ -20,7 +19,6 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@types/jsdom": "^28.0.1",
-    "cross-env": "^10.1.0",
     "jsdom": "^29.0.2",
     "vitest": "^4.1.3"
   }

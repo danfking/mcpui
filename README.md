@@ -18,11 +18,7 @@ npx burnish -- npx @modelcontextprotocol/server-filesystem /tmp
 
 **Swagger UI for the MCP ecosystem.** Connect to any MCP server and immediately see every tool it exposes — with descriptions, auto-generated input forms, and results rendered as cards, tables, charts, and metrics. No LLM. No API key. No data leaving your machine.
 
-Add an LLM and Burnish levels up: natural language queries, AI-generated insights streamed alongside structured data, and multi-tool orchestration across servers.
-
-## Two Modes
-
-### Explorer Mode — no LLM required
+## Features
 
 Connect. Browse. Execute. Everything is driven by the server's tool schemas.
 
@@ -30,28 +26,14 @@ Connect. Browse. Execute. Everything is driven by the server's tool schemas.
 - **Auto-generated forms** — JSON Schema in, interactive form out
 - **Rich results** — responses rendered as cards, tables, charts, stat bars, not raw JSON
 - **Fully private** — runs locally, no external calls, no telemetry
-- **Zero config** — `pnpm dev:nomodel` and you're running
-
-### LLM Insight Mode — LLM-enhanced
-
-Everything from Explorer, plus:
-
-- **Natural language queries** — "show me the 10 largest files modified this week"
-- **AI-generated insights** — analysis streamed below structured data
-- **Contextual next steps** — suggested follow-up actions based on results
-- **Multi-tool orchestration** — LLM chains tools across multiple servers in a single query
-- **Drill-down navigation** — click any card to trigger a contextual follow-up; results append below
+- **Zero config** — `npx burnish` and you're running
 
 ## Quick Start
 
 ### One command (once published to npm)
 
 ```bash
-# Explorer — no LLM, no API key
 npx burnish -- npx @modelcontextprotocol/server-filesystem /tmp
-
-# LLM Insight — with LLM
-npx burnish --llm=cli -- npx @modelcontextprotocol/server-filesystem /tmp
 ```
 
 ### From source
@@ -61,25 +43,12 @@ git clone https://github.com/danfking/burnish.git
 cd burnish
 pnpm install
 pnpm build
-pnpm dev:nomodel
+pnpm dev
 ```
 
 Open `http://localhost:3000`. Your configured MCP servers appear with all their tools ready to use.
 
-#### LLM Insight Mode (with LLM)
-
-```bash
-# Option A: Claude Code CLI auth (no API key needed)
-LLM_BACKEND=cli pnpm dev
-
-# Option B: Direct Anthropic API
-ANTHROPIC_API_KEY=sk-ant-... pnpm dev
-
-# Option C: Local model via Ollama (fully offline)
-LLM_BACKEND=openai OPENAI_BASE_URL=http://localhost:11434/v1 pnpm dev
-```
-
-Configure your MCP servers in `apps/demo/mcp-servers.json`, then ask a question.
+Configure your MCP servers in `apps/demo/mcp-servers.json`.
 
 ## For MCP Server Owners
 
@@ -102,19 +71,16 @@ Replace `@your-org/your-mcp-server` with your server's npm package or startup co
 
 | | Burnish | MCP Inspector | Composio / Rube | Smithery | n8n |
 |---|---|---|---|---|---|
-| **Works without LLM** | Yes (Explorer) | Yes | No | N/A | No |
+| **Works without LLM** | Yes | Yes | No | N/A | No |
 | **Rich visualization** | Cards, tables, charts, metrics | Raw JSON | Limited | None (registry only) | Node output |
 | **Any MCP server** | Yes | Yes | 500 pre-wrapped apps | Registry, no execution | Via custom nodes |
 | **Auto-generated forms** | Yes (from schema) | Manual JSON input | Pre-built forms | No | Node config UI |
-| **Natural language** | Yes (LLM Insight) | No | Yes | No | No |
-| **Streaming results** | Progressive SSE | No | No | No | No |
 | **Local / private** | Yes, fully | Yes | Cloud-dependent | Cloud | Self-host (heavy) |
 | **Setup time** | `npx burnish` | `npx` | Account + config | Browse only | Docker + config |
 | **Composable** | Any server combo | Single server | Locked ecosystem | N/A | Workflow builder |
 
 ## Key Features
 
-**Explorer (no LLM)**
 - Schema-driven tool discovery and form generation
 - 10 web components: cards, tables, charts, forms, stat bars, metrics, sections, messages, actions, pipelines
 - DOMPurify-sanitized rendering
@@ -122,12 +88,7 @@ Replace `@your-org/your-mcp-server` with your server's npm package or startup co
 - Framework-agnostic — standard web components, no React/Vue/Angular lock-in
 - Themeable via `--burnish-*` CSS custom properties
 - No build step required — import from CDN as ES modules
-
-**LLM Insight (LLM-enhanced)**
-- Progressive streaming — components render as the LLM generates them
-- Three LLM backends: Anthropic API (streaming tool-call loop), Claude CLI (zero-config auth), OpenAI-compatible (Ollama, llama.cpp, vLLM, LM Studio)
 - Drill-down navigation with collapsible sections and session persistence
-- Multi-server tool orchestration in a single query
 
 ## Component Reference
 
@@ -297,16 +258,6 @@ for (const el of elements) {
 
 ## Configuration
 
-### LLM Backend
-
-| Mode | Env Var | Description |
-|------|---------|-------------|
-| None | `LLM_BACKEND=none` | Explorer only — no LLM, instant tool execution |
-| API | `ANTHROPIC_API_KEY=sk-ant-...` | Direct Anthropic SDK with streaming tool-call loop (8 rounds max) |
-| CLI | `LLM_BACKEND=cli` | Spawns Claude CLI subprocess; uses your Claude Code subscription auth |
-| OpenAI | `LLM_BACKEND=openai` | OpenAI-compatible API (Ollama, llama.cpp, vLLM, LM Studio) |
-| Auto | *(none)* | Defaults to CLI if no API key is set |
-
 ### MCP Servers
 
 Configure in `apps/demo/mcp-servers.json`:
@@ -329,15 +280,14 @@ Configure in `apps/demo/mcp-servers.json`:
 }
 ```
 
-All configured servers connect at startup. Their tools are available immediately in Explorer mode and to the LLM in LLM Insight mode.
+All configured servers connect at startup. Their tools are available immediately.
 
 ## Development
 
 ```bash
 pnpm install          # Install all dependencies
 pnpm build            # Build all packages
-pnpm dev:nomodel      # Explorer mode (no LLM)
-pnpm dev              # LLM Insight mode (auto-detect backend)
+pnpm dev              # Start the demo
 pnpm test             # Run Playwright tests
 pnpm clean            # Clean all build artifacts
 ```
@@ -348,10 +298,11 @@ burnish/
 │   ├── components/       @burnishdev/components — 10 Lit web components
 │   ├── renderer/         @burnishdev/renderer  — streaming parser + sanitizer
 │   ├── app/              @burnishdev/app — drill-down logic + stream orchestration
-│   └── server/           @burnishdev/server — LLM orchestrator + MCP hub
+│   ├── server/           @burnishdev/server — MCP hub + guards + intent resolver
+│   └── cli/              @burnishdev/cli — npx burnish launcher
 ├── apps/
 │   └── demo/
-│       ├── server/       Hono API + dual-mode routing
+│       ├── server/       Hono API
 │       └── public/       SPA shell (ES modules, no framework)
 └── package.json          pnpm workspace root
 ```
@@ -360,58 +311,45 @@ burnish/
 
 - Node.js 20+
 - [pnpm](https://pnpm.io/) 9+
-- For CLI backend: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed
-- For API backend: an Anthropic API key
-- For local models: [Ollama](https://ollama.ai/) or any OpenAI-compatible server
 
 ## How It Works
 
 ```
-                    ┌──────────────────────────────────┐
-                    │        MCP Servers                │
-                    │  (filesystem, GitHub, DB, ...)    │
-                    └──────────────┬───────────────────┘
-                                   │ tool calls / results
-                                   │
-           ┌───────────────────────┴───────────────────────┐
-           │                                               │
-    Explorer Mode                                   LLM Insight Mode
-           │                                               │
-    ┌──────┴──────┐                              ┌─────────┴─────────┐
-    │ Schema      │                              │ LLM               │
-    │ Parser      │                              │ (Anthropic / CLI  │
-    │             │                              │  / OpenAI-compat) │
-    │ • List tools│                              │                   │
-    │ • Gen forms │                              │ • NL → tool calls │
-    │ • Map result│                              │ • Data → HTML     │
-    │   → comps   │                              │ • Streams via SSE │
-    └──────┬──────┘                              └─────────┬─────────┘
-           │                                               │
-           └───────────────────┬───────────────────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────────┐
-                    │  Streaming Renderer      │
-                    │                          │
-                    │  • Parse tags on arrival  │
-                    │  • Sanitize (DOMPurify)  │
-                    │  • Append to DOM         │
-                    └──────────┬───────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────────┐
-                    │  Web Components (Lit 3)  │
-                    │                          │
-                    │  • Shadow DOM isolation  │
-                    │  • JSON attribute parsing│
-                    │  • Event-driven drill-   │
-                    │    down navigation       │
-                    └──────────────────────────┘
+    ┌──────────────────────────────────┐
+    │        MCP Servers                │
+    │  (filesystem, GitHub, DB, ...)    │
+    └──────────────┬───────────────────┘
+                   │ tool calls / results
+                   ▼
+    ┌──────────────────────────┐
+    │  Schema-Driven UI        │
+    │                          │
+    │  • List tools             │
+    │  • Generate forms         │
+    │  • Map results → comps    │
+    └──────────┬───────────────┘
+               │
+               ▼
+    ┌──────────────────────────┐
+    │  Streaming Renderer      │
+    │                          │
+    │  • Parse tags on arrival  │
+    │  • Sanitize (DOMPurify)  │
+    │  • Append to DOM         │
+    └──────────┬───────────────┘
+               │
+               ▼
+    ┌──────────────────────────┐
+    │  Web Components (Lit 3)  │
+    │                          │
+    │  • Shadow DOM isolation  │
+    │  • JSON attribute parsing│
+    │  • Event-driven drill-   │
+    │    down navigation       │
+    └──────────────────────────┘
 ```
 
-**Explorer mode** reads the MCP server's tool list, generates forms from JSON Schema, and maps results directly to components — no LLM in the loop.
-
-**LLM Insight mode** adds an LLM that interprets natural language, orchestrates tool calls, and generates HTML using the burnish component vocabulary. The system prompt teaches the LLM which tags to use; the renderer streams them into the browser progressively.
+Burnish reads the MCP server's tool list, generates forms from JSON Schema, and maps results directly to components — no LLM in the loop. Everything runs locally.
 
 ## License
 

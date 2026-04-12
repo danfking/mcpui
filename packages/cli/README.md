@@ -23,11 +23,7 @@ npx burnish -- npx @modelcontextprotocol/server-filesystem /tmp
 Point Burnish at any MCP server command and open the UI in your browser:
 
 ```bash
-# Explorer mode — no LLM, instant tool execution
 npx burnish -- npx @modelcontextprotocol/server-filesystem /tmp
-
-# LLM Insight mode — natural language + tool orchestration
-npx burnish --llm=cli -- npx @modelcontextprotocol/server-filesystem /tmp
 ```
 
 Or embed the server programmatically:
@@ -45,7 +41,7 @@ await startServerWithHub(hub, { port: 4000 });
 
 ## What this is
 
-The CLI and embeddable web server for [Burnish](https://github.com/danfking/burnish). Launches a local UI against any MCP server config — auto-generating forms from tool schemas and rendering results as rich components. Runs fully offline in Explorer mode; add an LLM backend (Anthropic API, Claude CLI, or OpenAI-compatible) for natural-language queries and multi-tool orchestration.
+The CLI and embeddable web server for [Burnish](https://github.com/danfking/burnish). Launches a local UI against any MCP server config — auto-generating forms from tool schemas and rendering results as rich components. Runs fully offline, no LLM or API key required.
 
 ## Links
 
