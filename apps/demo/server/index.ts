@@ -17,6 +17,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile, writeFile, mkdtemp } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 import {
@@ -551,7 +552,16 @@ async function start() {
     const openaiBaseUrl = process.env.OPENAI_BASE_URL;
     const defaultModel = llmBackend === 'openai' ? 'qwen2.5:7b' : 'sonnet';
     const modelName = process.env.OPENAI_MODEL || process.env.ANTHROPIC_MODEL || defaultModel;
-    const rawConfigPath = resolve(__dirname, '../mcp-servers.json');
+    const userConfigPath = resolve(__dirname, '../mcp-servers.json');
+    const defaultConfigPath = resolve(__dirname, '../mcp-servers.default.json');
+    // Fall back to the committed default config (showcase example-server only)
+    // if the user hasn't created their own mcp-servers.json. This ensures fresh
+    // clones/worktrees have at least one working MCP server out of the box.
+    const rawConfigPath = existsSync(userConfigPath) ? userConfigPath : defaultConfigPath;
+    if (rawConfigPath === defaultConfigPath) {
+        console.log('[burnish] No mcp-servers.json found — using mcp-servers.default.json (showcase example-server).');
+        console.log('[burnish] Create apps/demo/mcp-servers.json to configure your own MCP servers.');
+    }
 
     if (llmBackend === 'api' && !apiKey) {
         console.error('[burnish] ANTHROPIC_API_KEY required for api backend.');
