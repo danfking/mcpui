@@ -1,48 +1,14 @@
 # Burnish — Universal UI Layer for MCP Servers
 
-A component library + streaming renderer + demo app that connects to any MCP server and renders navigable visual dashboards from LLM tool call results.
+A component library + streaming renderer + demo app that connects to any MCP server and renders navigable visual dashboards from tool call results. Schema-driven, no LLM required.
 
 ## Quick Start
 
 ```bash
 pnpm install
 pnpm build
-
-# Option 1: Use Claude Code CLI auth (no API key needed)
-pnpm dev:cli
-
-# Option 2: Use direct API key
-ANTHROPIC_API_KEY=sk-... pnpm dev
+pnpm dev
 ```
-
-### LLM Backend Selection
-- `LLM_BACKEND=cli` — Spawns `claude` CLI subprocess, uses your Claude Code subscription auth. No API key needed. Tools are pre-fetched into context (no tool-call loop).
-- `LLM_BACKEND=api` (default when ANTHROPIC_API_KEY is set) — Direct Anthropic SDK with streaming tool-call loop (8 rounds max).
-- `LLM_BACKEND=openai` — OpenAI-compatible API (Ollama, llama.cpp, vLLM, LM Studio, OpenAI). Streaming tool-call loop (8 rounds max).
-- If no API key and no explicit backend, defaults to `cli`.
-
-### Local Model Support (OpenAI Backend)
-
-Run Burnish with local models via Ollama:
-
-```bash
-# Install Ollama (https://ollama.com)
-ollama pull qwen2.5:7b
-
-# Start Burnish with local model
-OPENAI_BASE_URL=http://localhost:11434/v1 OPENAI_MODEL=qwen2.5:7b LLM_BACKEND=openai pnpm dev
-```
-
-**Recommended local models** (benchmarked for tool calling + burnish-* component output):
-
-| Model | Size | Tool Calling | Component Output | Speed | Best For |
-|-------|------|-------------|-----------------|-------|----------|
-| **Qwen 2.5 7B** (recommended) | 4.7GB | ✅ Reliable | 11/15 | ~2s/req | Best overall for Burnish |
-| Llama 3.1 8B | 4.9GB | ✅ Reliable | 12/15 | ~3s/req | Highest component accuracy |
-| Llama 3.2 3B | 2.0GB | ✅ Reliable | 12/15 | ~1s/req | Low-resource / mobile |
-| Phi-4 Mini | 2.5GB | ❌ Broken | 11/15 | ~1.5s/req | Not recommended (no tool calling) |
-
-**Minimum requirements**: 8GB RAM for 7B models, 4GB for 3B models. GPU optional but recommended.
 
 ### MCP Transport
 
