@@ -302,6 +302,27 @@ body {
     font-weight: 400;
     margin-top: 2px;
 }
+.burnish-suggestion-server { max-width: 260px; }
+.burnish-server-card-description {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    width: 100%;
+    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.35;
+    font-weight: 400;
+    color: var(--burnish-text-muted, #9C8F8F);
+    text-transform: none;
+    white-space: normal;
+    text-align: center;
+}
+.burnish-server-card-description-empty {
+    font-style: italic;
+    opacity: 0.75;
+}
 .burnish-suggestion-skeleton-pill {
     width: 140px;
     height: 40px;

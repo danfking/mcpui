@@ -4,10 +4,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-const server = new McpServer({
-  name: "burnish-example-server",
-  version: "0.1.0",
-});
+const server = new McpServer(
+  {
+    name: "burnish-example-server",
+    version: "0.1.0",
+  },
+  {
+    instructions:
+      "A demo MCP server for the Burnish Explorer. Showcases auto-generated forms, rich result rendering, and connected drill-down navigation with a fictional project-management dataset.",
+  }
+);
 
 // --- Tool: get-project-info ---
 server.tool(

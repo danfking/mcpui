@@ -1418,13 +1418,23 @@ async function loadDynamicSuggestions(container) {
             if (servers.length === 0) {
                 serverBtns.innerHTML = '<span class="burnish-no-servers">No servers connected</span>';
             } else {
-                serverBtns.innerHTML = servers.map(s => `
-                    <button class="burnish-suggestion burnish-suggestion-server" data-label="${escapeAttr(s.name)}">
+                serverBtns.innerHTML = servers.map(s => {
+                    const hasInstructions = typeof s.instructions === 'string' && s.instructions.trim().length > 0;
+                    const descText = hasInstructions
+                        ? s.instructions.trim()
+                        : `${s.toolCount} tools — no description provided`;
+                    const toolCountLine = hasInstructions
+                        ? `<span class="burnish-suggestion-sub">${s.toolCount} tools</span>`
+                        : '';
+                    return `
+                    <button class="burnish-suggestion burnish-suggestion-server" data-label="${escapeAttr(s.name)}" title="${escapeAttr(descText)}">
                         <span class="burnish-server-status ${s.status === 'connected' ? 'connected' : 'disconnected'}"></span>
                         ${escapeHtml(s.name)}
-                        <span class="burnish-suggestion-sub">${s.toolCount} tools</span>
+                        ${toolCountLine}
+                        <span class="burnish-server-card-description${hasInstructions ? '' : ' burnish-server-card-description-empty'}">${escapeHtml(descText)}</span>
                     </button>
-                `).join('');
+                `;
+                }).join('');
             }
         }
 
