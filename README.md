@@ -351,10 +351,6 @@ burnish/
 
 Burnish reads the MCP server's tool list, generates forms from JSON Schema, and maps results directly to components — no LLM in the loop. Everything runs locally.
 
-## Roadmap
-
-Burnish is a free, open-source, deterministic MCP explorer. A separate LLM-powered tier with natural language queries, AI-generated insights, and multi-server orchestration is in private development. If that sounds useful, [open an issue](https://github.com/danfking/burnish/issues) to register interest.
-
 ## License
 
 [AGPL-3.0](LICENSE) — Daniel King ([@danfking](https://github.com/danfking))
