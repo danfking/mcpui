@@ -422,6 +422,12 @@ Burnish collects **opt-in**, anonymous telemetry to measure real adoption (see [
 
 Telemetry is a single fire-and-forget HTTPS POST to `https://burnish-demo.fly.dev/telemetry/v1/ping` with a short timeout. If the endpoint is unreachable, the CLI behaves identically — nothing is retried or queued. Telemetry is skipped entirely in non-interactive and CI environments when no choice has been stored.
 
+## Coming soon: Copilot
+
+Copilot is the planned LLM-powered natural-language layer over Explorer mode — ask a question and Burnish picks the right tools across your connected servers, rendering the answer with the same components you see today. Explorer mode (what you use now) stays free, local, and zero-LLM.
+
+[Join the waitlist →](https://github.com/danfking/burnish/discussions/389)
+
 ## License
 
 [AGPL-3.0](LICENSE) — Daniel King ([@danfking](https://github.com/danfking))
