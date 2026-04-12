@@ -57,7 +57,7 @@ import {
 // This public demo runs Explorer-only — no chat routes, no mode toggle.
 
 // ── Performance tracking ──
-import { recordPerf, recordToolPerf, togglePerfPanel, refreshPerfPanel } from './perf-panel.js';
+import { recordToolPerf, togglePerfPanel, refreshPerfPanel } from './perf-panel.js';
 
 // ── Theme toggle ──
 document.getElementById('theme-toggle')?.addEventListener('click', () => {
