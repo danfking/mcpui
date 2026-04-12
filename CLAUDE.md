@@ -109,7 +109,7 @@ burnish/
 ### Package Responsibilities
 - **@burnishdev/components** — Lit web components, publishable to npm/CDN
 - **@burnishdev/renderer** — Stream parser, HTML sanitizer config, component mapper
-- **@burnishdev/server** — `McpHub` (MCP client management), `LlmOrchestrator` (dual CLI/API backends), `ConversationStore`, guards, catalog, prompt template
+- **@burnishdev/server** — `McpHub` (MCP client management), tool guards (`isWriteTool`, `safePath`, `authorizeToolCall`), `resolveIntent` for intent-based tool disambiguation
 - **@burnishdev/app** — Framework-agnostic headless SDK: `SessionStore` (IndexedDB), `StreamOrchestrator` (SSE), navigation tree utils, output transformer, drill-down helpers, summary utils
 
 ## Conventions
