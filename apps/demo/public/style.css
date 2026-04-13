@@ -250,13 +250,17 @@ body {
     color: var(--burnish-text);
 }
 .burnish-server-buttons {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 12px;
     margin-bottom: 16px;
     max-width: 720px;
     margin-left: auto;
     margin-right: auto;
+}
+.burnish-server-buttons > * {
+    flex: 0 1 340px;
 }
 .burnish-server-buttons:empty { display: none; }
 .burnish-tool-shortcuts {
@@ -1167,7 +1171,7 @@ body {
     .burnish-theme-toggle span { display: none; }
     .burnish-empty-state { padding: 40px 16px 40px; }
     .burnish-empty-state h2 { font-size: 22px; }
-    .burnish-server-buttons { grid-template-columns: 1fr; }
+    .burnish-server-buttons > * { flex: 1 1 100%; }
     .burnish-tool-shortcuts { flex-direction: column; align-items: center; }
     .burnish-starter-prompts { flex-direction: column; align-items: center; }
 }
