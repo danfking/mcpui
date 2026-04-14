@@ -15,7 +15,7 @@ export function formatMcpError(raw: string, serverName?: string): string {
     const server = serverName ? `"${serverName}"` : 'server';
 
     // ENOENT / command not found (stdio transport)
-    if (/ENOENT|spawn .+ ENOENT|command not found/i.test(raw)) {
+    if (/ENOENT|spawn \S+ ENOENT|command not found/i.test(raw)) {
         const cmdMatch = raw.match(/spawn\s+(\S+)/);
         const cmd = cmdMatch ? cmdMatch[1] : null;
         return cmd
