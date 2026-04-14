@@ -188,7 +188,9 @@ function convertTables(text: string, prefix: string, minRows: number): string {
 // ---------------------------------------------------------------------------
 
 // Matches "**Label:** value" or "- **Label:** value"
-const KV_RE = /^[-*]?\s*\*\*([^*]+)\*\*[:\s]+(\S.*)$/;
+// Uses atomic-style groups (possessive quantifier emulation via negated classes)
+// to avoid polynomial backtracking on adversarial input.
+const KV_RE = /^[-*]?\s*\*\*([^*]+)\*\*:\s*(\S.*)$/;
 
 function hasKeyValuePattern(text: string): boolean {
     const lines = text.split('\n').map(l => l.trim());

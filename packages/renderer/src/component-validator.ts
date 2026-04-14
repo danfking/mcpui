@@ -285,11 +285,13 @@ function parseAttrsFromHtml(html: string): Record<string, string> {
         attrs[m[1].toLowerCase()] = m[2] ?? m[3] ?? '';
     }
 
-    // Match bare boolean attributes (words not followed by =)
-    const bareRe = /\b([\w-]+)\b(?!\s*=)/g;
-    while ((m = bareRe.exec(attrString)) !== null) {
-        const name = m[1].toLowerCase();
-        if (name !== '/' && name !== '>' && !(name in attrs)) {
+    // Match bare boolean attributes by splitting on whitespace and filtering
+    // out tokens that are key=value pairs, closing slashes, or brackets.
+    for (const token of attrString.split(/\s+/)) {
+        if (!token || token === '/' || token === '>' || token.includes('=')) continue;
+        // Strip any trailing /> or >
+        const name = token.replace(/\/?>/g, '').toLowerCase();
+        if (name && /^[\w-]+$/.test(name) && !(name in attrs)) {
             attrs[name] = '';
         }
     }

@@ -265,7 +265,10 @@ function updateBreadcrumb() {
 
 // ── Session List Rendering ──
 function stripHtml(text) {
-    return text.replace(/<[^>]*>/g, '').replace(/&(?:#[xX]?[\da-fA-F]+|\w+);/g, ' ').replace(/\s+/g, ' ');
+    // Loop until stable to handle incomplete tags like <scr<script>ipt>
+    let prev;
+    do { prev = text; text = text.replace(/<[^>]*>/g, ''); } while (text !== prev);
+    return text.replace(/&(?:#[xX]?[\da-fA-F]+|\w+);/g, ' ').replace(/\s+/g, ' ');
 }
 
 function sessionMatchesSearch(session, query) {

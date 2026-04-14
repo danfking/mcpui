@@ -113,7 +113,7 @@ function parseExplicitToolCall(
     tools: ToolDef[],
 ): IntentResolution | null {
     const match = prompt.match(
-        /^Call the tool\s+(\S+)\s+with\s+[^:]*parameters?:?\s*(.*)/i,
+        /^Call the tool\s+(\S+)\s+with\s+[^:]{0,50}parameters?:?\s*(.*)/i,
     );
     if (!match) return null;
 
@@ -128,7 +128,7 @@ function parseExplicitToolCall(
     const params: Record<string, unknown> = {};
 
     // Parse key=value or key="value" pairs
-    const pairPattern = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/g;
+    const pairPattern = /(\w+)=(?:"([^"]*)"|'([^']*)'|(\S+))/g;
     let pairMatch: RegExpExecArray | null;
     while ((pairMatch = pairPattern.exec(paramsStr)) !== null) {
         const key = pairMatch[1];
