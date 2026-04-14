@@ -1335,6 +1335,15 @@ body {
     top: 0;
     z-index: 10;
     padding: 8px 0 12px;
+    background: var(--burnish-surface, #fff);
+}
+.burnish-tool-filter-container::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    height: 200px;
     background: inherit;
 }
 .burnish-tool-filter {
