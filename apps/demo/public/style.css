@@ -1341,8 +1341,8 @@ body {
     content: '';
     position: absolute;
     bottom: 100%;
-    left: -24px;
-    right: -24px;
+    left: 0;
+    right: 0;
     height: 200px;
     background: inherit;
 }
