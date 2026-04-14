@@ -127,12 +127,19 @@ function parseExplicitToolCall(
 
     const params: Record<string, unknown> = {};
 
-    // Parse key=value or key="value" pairs
-    const pairPattern = /(\w+)=(?:"([^"]*)"|'([^']*)'|(\S+))/g;
-    let pairMatch: RegExpExecArray | null;
-    while ((pairMatch = pairPattern.exec(paramsStr)) !== null) {
-        const key = pairMatch[1];
-        const value = pairMatch[2] ?? pairMatch[3] ?? pairMatch[4];
+    // Parse key=value or key="value" pairs using string splitting
+    // (avoids regex alternation that CodeQL flags as polynomial).
+    for (const token of paramsStr.split(/\s+/)) {
+        const eqIdx = token.indexOf('=');
+        if (eqIdx < 1) continue;
+        const key = token.substring(0, eqIdx);
+        if (!/^\w+$/.test(key)) continue;
+        let value = token.substring(eqIdx + 1);
+        // Strip matching quotes
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+        }
         params[key] = value;
     }
 
