@@ -1337,16 +1337,8 @@ body {
     padding: 8px 0 12px;
     background: var(--burnish-surface, #fff);
 }
-.burnish-tool-filter-container::before {
-    content: '';
-    position: absolute;
-    bottom: 100%;
-    left: 0;
-    right: 0;
-    height: 200px;
-    background: inherit;
-    pointer-events: none;
-}
+/* No ::before overlay — the filter container's own background
+   covers content behind the sticky bar. */
 .burnish-tool-filter {
     width: 100%;
     padding: 10px 12px 10px 36px;
