@@ -105,8 +105,8 @@ const STARTER_PROMPTS = {
         { label: 'Find large files', tool: 'search_files', args: { path: '.', pattern: '*' } },
     ],
     'sample-files': [
-        { label: 'Get a detailed listing of all files and d...', tool: 'list_directory', args: { path: '/data/sample-files' }, server: 'sample-files' },
-        { label: 'Get a recursive tree view of files and d...', tool: 'directory_tree', args: { path: '/data/sample-files' }, server: 'sample-files' },
+        { label: 'List sample files', tool: 'list_directory', args: { path: '/data/sample-files' }, server: 'sample-files' },
+        { label: 'Show file tree', tool: 'directory_tree', args: { path: '/data/sample-files' }, server: 'sample-files' },
     ],
     github: [
         { label: 'Search repos', tool: 'search_repositories', args: { query: 'stars:>100' } },
@@ -1454,6 +1454,52 @@ async function loadDynamicSuggestions(container) {
                     toolSchemaCache[`mcp__${s.name}__${tool.name}`] = tool.inputSchema;
                 }
             }
+        }
+
+        // Discover allowed directories for filesystem servers and patch in path defaults
+        for (const s of servers) {
+            if (s.status !== 'connected') continue;
+            const hasAllowedDirs = s.tools.some(t => t.name === 'list_allowed_directories');
+            if (!hasAllowedDirs) continue;
+            try {
+                const adRes = await fetch('/api/tools/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ toolName: 'list_allowed_directories', args: {}, serverName: s.name }),
+                });
+                const adData = await adRes.json();
+                if (adData.result && !adData.isError) {
+                    const rootDir = adData.result.replace('Allowed directories:\n', '').split('\n')[0].trim();
+                    if (rootDir) {
+                        const sep = rootDir.includes('\\') ? '\\' : '/';
+                        // Patch path defaults for tools that have a path property
+                        const fileHints = {
+                            read_file: `${rootDir}${sep}README.md`,
+                            read_text_file: `${rootDir}${sep}README.md`,
+                            get_file_info: `${rootDir}${sep}README.md`,
+                            search_files: rootDir,
+                            list_directory: rootDir,
+                            directory_tree: rootDir,
+                            list_directory_with_sizes: rootDir,
+                            create_directory: rootDir,
+                            move_file: rootDir,
+                        };
+                        for (const tool of s.tools) {
+                            const schema = toolSchemaCache[tool.name];
+                            if (schema?.properties?.path && !schema.properties.path.default) {
+                                schema.properties.path.default = fileHints[tool.name] || rootDir;
+                            }
+                        }
+                        // Also update starter prompts with the actual root
+                        const sp = STARTER_PROMPTS[s.name];
+                        if (sp) {
+                            for (const p of sp) {
+                                if (p.args?.path) p.args.path = rootDir;
+                            }
+                        }
+                    }
+                }
+            } catch { /* non-critical */ }
         }
 
         const serverBtns = container.querySelector('#server-buttons');
