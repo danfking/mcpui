@@ -24,14 +24,14 @@ test.describe('launch polish (#414, #415)', () => {
 
         await page.goto('/');
 
-        const serverBtns = page.locator('#server-buttons button');
+        const exploreBtns = page.locator('#server-buttons .card-action');
         try {
-            await serverBtns.first().waitFor({ state: 'visible', timeout: 30_000 });
+            await exploreBtns.first().waitFor({ state: 'visible', timeout: 30_000 });
         } catch {
             test.skip(true, 'MCP servers not connected in time');
             return;
         }
-        await serverBtns.first().click();
+        await exploreBtns.first().click();
         await page.waitForSelector('.burnish-node', { timeout: 10_000 });
 
         const before = await page.locator('.burnish-node').count();
