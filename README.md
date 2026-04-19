@@ -29,15 +29,15 @@ npx burnish -- npx -y @burnishdev/example-server
 
 That's it. Burnish spawns the example MCP server, reads its tool list, opens your browser, and renders every tool as an interactive form. The example server ships with a dozen tools — creating bug reports, listing team members, searching records — so you can click through, fill in forms, and see results rendered as cards, tables, and charts without writing a line of your own MCP code.
 
-Want to try it against a different server? Point `burnish` at any stdio or SSE MCP server — see [What you can point it at](#what-you-can-point-it-at) below.
-
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/quickstart-screenshot-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/quickstart-screenshot-light.png">
-    <img src="docs/assets/quickstart-screenshot-light.png" alt="Burnish Explorer showing a populated MCP server with rendered tool results" width="820">
+    <img src="docs/assets/quickstart-screenshot-light.png" alt="Burnish Explorer showing the example server's list-projects tool rendered as cards" width="820">
   </picture>
 </p>
+
+Want to try it against a different server? Point `burnish` at any stdio or SSE MCP server — see [What you can point it at](#what-you-can-point-it-at) below.
 
 Try the hosted demo: **[burnish-demo.fly.dev](https://burnish-demo.fly.dev)**
 
