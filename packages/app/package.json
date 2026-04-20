@@ -1,7 +1,7 @@
 {
   "name": "@burnishdev/app",
   "version": "0.4.0",
-  "description": "Headless SDK for Burnish \u00e2\u20ac\u201d navigation, sessions, streaming, and output transformation",
+  "description": "Headless SDK for Burnish — navigation, sessions, streaming, and output transformation",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
