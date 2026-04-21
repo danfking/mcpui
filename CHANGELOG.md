@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/danfking/burnish/compare/v0.4.2...v0.4.3) (2026-04-20)
+
+
+### Bug Fixes
+
+* **style:** add gap between disclosure triangle and text in schema tree ([#485](https://github.com/danfking/burnish/issues/485)) ([85dc8fe](https://github.com/danfking/burnish/commit/85dc8fe0f94d12d71a6f5b4ab1c9a9ff610f4b39))
+
 ## [0.4.2](https://github.com/danfking/burnish/compare/v0.4.1...v0.4.2) (2026-04-20)
 
 
