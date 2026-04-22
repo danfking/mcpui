@@ -135,7 +135,7 @@ export class BurnishCard extends LitElement {
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
-            flex: 0 0 auto;
+            max-height: calc(3 * 1.5em + 2px);
         }
         .card-body h1, .card-body h2, .card-body h3, .card-body h4 {
             font-size: 13px; font-weight: 600; margin: 8px 0 4px; color: var(--burnish-text, #2D1F1F);

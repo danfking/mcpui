@@ -26,7 +26,7 @@ const server = new McpServer(
   },
   {
     instructions:
-      "A fictional consulting company with projects, clients, tasks, and orders. Everything is interconnected, so you can click from a project into a task into a comment and keep exploring.",
+      "A fictional consulting company with interconnected projects, clients, tasks, and orders you can click through and explore.",
   }
 );
 
