@@ -1545,7 +1545,7 @@ async function loadDynamicSuggestions(container) {
 
                 const schema = tool.inputSchema;
                 const hasRequired = schema?.required?.length > 0;
-                const hasParams = schema?.properties && Object.keys(schema.properties).length > 0;
+                if (hasRequired) continue;
 
                 shortcuts.push({
                     label,
