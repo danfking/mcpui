@@ -26,7 +26,7 @@ const server = new McpServer(
   },
   {
     instructions:
-      "A deep-graph demo MCP server for the Burnish Explorer. A fictional consulting company with projects, clients, team members, tasks, comments, incidents, and orders — all interconnected, so you can click from a project into a task into a comment into the comment's author and keep going. Showcases Burnish's drill-down navigation, auto-generated forms, and rich result rendering.",
+      "A fictional consulting company with projects, clients, tasks, and orders. Everything is interconnected, so you can click from a project into a task into a comment and keep exploring.",
   }
 );
 
